@@ -19,7 +19,6 @@ type AggregateItem = {
   name: string;
   category: string;
   image: string;
-  description: string;
   tags: string[];
   totalQuantity: number;
   sourceCount: number;
@@ -134,19 +133,6 @@ export default function AggregatedItemDetail({
           >
             {item.name}
           </Typography>
-
-          <Typography
-            sx={{
-              mt: 1,
-              color: "var(--muted)",
-              fontSize: "1rem",
-              lineHeight: 1.65,
-              maxWidth: 860,
-            }}
-          >
-            {item.description}
-          </Typography>
-
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
             <Chip
               label={item.category}

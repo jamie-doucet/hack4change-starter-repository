@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, forwardRef } from "react";
 import {
   AppBar,
+  Alert,
   Box,
   Button,
   Dialog,
@@ -40,7 +41,7 @@ type Props = {
   orgName: string;
   item: InventoryItem | null;
   onClose: () => void;
-  onSave: (item: InventoryItem) => void;
+  onSave: (item: InventoryItem) => Promise<void> | void;
 };
 
 function makeId() {
@@ -69,6 +70,8 @@ export default function InventoryItemDialog({
   const [quantity, setQuantity] = useState("1");
   const [image, setImage] = useState(defaultImageForCategory("food"));
   const [editingTitle, setEditingTitle] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [errorText, setErrorText] = useState("");
 
   const titleInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -96,6 +99,8 @@ export default function InventoryItemDialog({
     }
 
     setEditingTitle(false);
+    setSaving(false);
+    setErrorText("");
   }, [item, open, kind]);
 
   useEffect(() => {
@@ -113,33 +118,47 @@ export default function InventoryItemDialog({
     }
   };
 
-  const handleSave = () => {
-    if (!name.trim()) return;
+  const handleSave = async () => {
+    const trimmedName = name.trim();
 
-    if (kind === "asking") {
-      const next: AskingItem = {
-        id: item?.id ?? makeId(),
-        name: name.trim(),
-        category,
-        urgency,
-        quantity: normalizeQuantity(quantity),
-        image: image || defaultImageForCategory(category),
-      };
-
-      onSave(next);
+    if (!trimmedName) {
+      setErrorText("Please enter an item name.");
       return;
     }
 
-    const next: OfferingItem = {
-      id: item?.id ?? makeId(),
-      name: name.trim(),
-      category,
-      expiration: expiration || undefined,
-      quantity: normalizeQuantity(quantity),
-      image: image || defaultImageForCategory(category),
-    };
+    setSaving(true);
+    setErrorText("");
 
-    onSave(next);
+    try {
+      if (kind === "asking") {
+        const next: AskingItem = {
+          id: item?.id ?? makeId(),
+          name: trimmedName,
+          category,
+          urgency,
+          quantity: normalizeQuantity(quantity),
+          image: image || defaultImageForCategory(category),
+        };
+
+        await onSave(next);
+      } else {
+        const next: OfferingItem = {
+          id: item?.id ?? makeId(),
+          name: trimmedName,
+          category,
+          expiration: expiration || undefined,
+          quantity: normalizeQuantity(quantity),
+          image: image || defaultImageForCategory(category),
+        };
+
+        await onSave(next);
+      }
+    } catch (error) {
+      console.error("Failed to save inventory item:", error);
+      setErrorText("Could not save this item. Check the console for details.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const dialogEyebrow =
@@ -155,7 +174,7 @@ export default function InventoryItemDialog({
     <Dialog
       fullScreen
       open={open}
-      onClose={onClose}
+      onClose={saving ? undefined : onClose}
       TransitionComponent={Transition}
       PaperProps={{
         sx: {
@@ -178,6 +197,7 @@ export default function InventoryItemDialog({
         <Toolbar sx={{ justifyContent: "space-between" }}>
           <Button
             onClick={onClose}
+            disabled={saving}
             sx={{
               color: "var(--foreground)",
               borderRadius: 999,
@@ -193,6 +213,7 @@ export default function InventoryItemDialog({
 
           <Button
             onClick={handleSave}
+            disabled={saving}
             sx={{
               borderRadius: 999,
               px: 2.2,
@@ -202,9 +223,13 @@ export default function InventoryItemDialog({
               "&:hover": {
                 bgcolor: "var(--accent-strong)",
               },
+              "&.Mui-disabled": {
+                bgcolor: "#d7efe8",
+                color: "#6c847d",
+              },
             }}
           >
-            Save
+            {saving ? "Saving..." : "Save"}
           </Button>
         </Toolbar>
       </AppBar>
@@ -274,6 +299,7 @@ export default function InventoryItemDialog({
 
                   <IconButton
                     onClick={() => setEditingTitle(true)}
+                    disabled={saving}
                     sx={{
                       border: "1px solid var(--border)",
                       bgcolor: "white",
@@ -291,6 +317,8 @@ export default function InventoryItemDialog({
                 </Typography>
               )}
             </Box>
+
+            {errorText && <Alert severity="error">{errorText}</Alert>}
 
             <InventoryItemFields
               kind={kind}

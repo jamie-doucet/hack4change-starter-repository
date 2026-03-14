@@ -105,7 +105,7 @@ export default function OrgProfileHeader({ org, onBioChange }: Props) {
 
             <Chip
               icon={<PlaceOutlinedIcon />}
-              label={org.address}
+              label={org.location}
               sx={{
                 borderRadius: 999,
                 bgcolor: "var(--accent-soft)",

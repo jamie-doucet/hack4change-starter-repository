@@ -11,30 +11,30 @@ export type ChatRequestLine = {
   quantity: number;
 };
 
+export type ChatThread = {
+  id: string;
+  participantKey: string;
+  orgIds: string[];
+  orgNames: Record<string, string>;
+  subject: string;
+  requestId?: string;
+  lastMessageText?: string;
+  lastMessageAt?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
 export type ChatMessage = {
   id: string;
   senderRole: ChatRole;
-  type: "text" | "request";
+  senderOrgId: string;
+  senderOrgName: string;
+  type: "text" | "request" | "system";
   text: string;
-  createdAt: number;
+  createdAt?: unknown;
   automated?: boolean;
+  requestId?: string;
   requestLines?: ChatRequestLine[];
   requestStatus?: ChatRequestStatus;
-  expiresAt?: number;
-};
-
-export type ChatThread = {
-  id: string;
-  subject: string;
-  orgLabel: string;
-  memberOrgLabel: string;
-  createdAt: number;
-  updatedAt: number;
-  unreadForOrg: number;
-  unreadForMemberOrg: number;
-  messages: ChatMessage[];
-};
-
-export type ChatState = {
-  threads: ChatThread[];
+  expiresAt?: string;
 };

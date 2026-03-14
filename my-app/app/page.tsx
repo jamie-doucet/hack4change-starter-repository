@@ -15,11 +15,13 @@ import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { useRouter } from "next/navigation";
 import AggregatedResourceCard from "@/app/components/home/AggregatedResourceCard";
 import AggregatedItemOverlay from "@/app/components/home/AggregatedItemOverlay";
-import { openConversationThread } from "@/app/lib/chat/chatStore";
+import { subscribeAllOrgs } from "@/app/lib/firestore/orgs";
+import { subscribeActiveListingsByKind } from "@/app/lib/firestore/listings";
 import type { AskingItem, OrgProfile } from "@/app/components/org/types";
+import type { ListingDoc, OrgDoc } from "@/app/lib/firestore/types";
+import { openOrCreateThread } from "./lib/firestore/messages";
 
 type BrowseMode = "asking" | "offering";
-
 type NetworkOrg = OrgProfile;
 
 type AggregateSource = {
@@ -37,7 +39,6 @@ type AggregateItem = {
   name: string;
   category: string;
   image: string;
-  description: string;
   tags: string[];
   totalQuantity: number;
   sourceCount: number;
@@ -140,38 +141,25 @@ const orgs: NetworkOrg[] = [
   },
 ];
 
-const itemCatalog: Record<
-  string,
-  { image: string; description: string; tags: string[] }
-> = {
+const itemCatalog: Record<string, { image: string; tags: string[] }> = {
   "winter coats": {
     image: "https://placehold.co/320x220?text=Winter+Coats",
-    description:
-      "Warm outerwear useful during cold weather and outdoor outreach support.",
     tags: ["warm clothing", "cold weather", "essential"],
   },
   toothbrushes: {
     image: "https://placehold.co/320x220?text=Toothbrushes",
-    description:
-      "Basic hygiene supplies that can be distributed individually in kits or outreach packs.",
     tags: ["hygiene", "kits", "daily essentials"],
   },
   blankets: {
     image: "https://placehold.co/320x220?text=Blankets",
-    description:
-      "Useful for warmth, emergency sleeping support, and cold-weather assistance.",
     tags: ["warmth", "shelter support", "comfort"],
   },
   "granola bars": {
     image: "https://placehold.co/320x220?text=Granola+Bars",
-    description:
-      "Simple ready-to-eat food that works well for quick distribution and outreach.",
     tags: ["food", "ready to eat", "outreach"],
   },
   "bottled water": {
     image: "https://placehold.co/320x220?text=Water",
-    description:
-      "Packaged drinking water suitable for quick distribution and emergency support.",
     tags: ["hydration", "food", "distribution"],
   },
 };
@@ -183,7 +171,6 @@ function getCatalog(name: string, category: string) {
   return (
     itemCatalog[key] ?? {
       image: fallbackImage,
-      description: `${name} currently shared across member organisations.`,
       tags: [category],
     }
   );
@@ -206,7 +193,6 @@ function aggregateItems(mode: BrowseMode, allOrgs: NetworkOrg[]): AggregateItem[
           name: item.name,
           category: item.category,
           image: mode === "offering" ? item.image || meta.image : meta.image,
-          description: meta.description,
           tags: meta.tags,
           totalQuantity: 0,
           sourceCount: 0,
@@ -232,6 +218,97 @@ function aggregateItems(mode: BrowseMode, allOrgs: NetworkOrg[]): AggregateItem[
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function aggregateFirestoreItems(
+  mode: BrowseMode,
+  listings: ListingDoc[],
+  orgDocs: OrgDoc[]
+): AggregateItem[] {
+  const orgMap = new Map(orgDocs.map((org) => [org.id, org]));
+  const map = new Map<string, AggregateItem>();
+
+  for (const listing of listings) {
+    const key = `${listing.name.trim().toLowerCase()}__${listing.category}`;
+    const meta = getCatalog(listing.name, listing.category);
+    const org = orgMap.get(listing.orgId);
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        name: listing.name,
+        category: listing.category,
+        image: mode === "offering" ? listing.imageUrl || meta.image : meta.image,
+        tags: meta.tags,
+        totalQuantity: 0,
+        sourceCount: 0,
+        sources: [],
+      });
+    }
+
+    const entry = map.get(key)!;
+    entry.totalQuantity += listing.quantity;
+    entry.sourceCount += 1;
+    entry.sources.push({
+      orgId: listing.orgId,
+      orgName: org?.name || listing.orgNameSnapshot || listing.orgId,
+      location: org?.location || "",
+      quantity: listing.quantity,
+      itemId: listing.id,
+      expiration: listing.expiration || undefined,
+      urgency: listing.urgency || undefined,
+    });
+  }
+
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function mergeAggregates(
+  filler: AggregateItem[],
+  real: AggregateItem[]
+): AggregateItem[] {
+  const map = new Map<string, AggregateItem>();
+
+  for (const item of filler) {
+    map.set(item.key, {
+      ...item,
+      sources: [...item.sources],
+    });
+  }
+
+  for (const item of real) {
+    const existing = map.get(item.key);
+
+    if (!existing) {
+      map.set(item.key, {
+        ...item,
+        sources: [...item.sources],
+      });
+      continue;
+    }
+
+    const sourceMap = new Map(
+      existing.sources.map((source) => [`${source.orgId}__${source.itemId}`, source])
+    );
+
+    for (const source of item.sources) {
+      sourceMap.set(`${source.orgId}__${source.itemId}`, source);
+    }
+
+    map.set(item.key, {
+      ...existing,
+      image: existing.image || item.image,
+      tags: Array.from(new Set([...existing.tags, ...item.tags])),
+      totalQuantity: Array.from(sourceMap.values()).reduce(
+        (sum, source) => sum + source.quantity,
+        0
+      ),
+      sourceCount: sourceMap.size,
+      sources: Array.from(sourceMap.values()),
+    });
+  }
+
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [mode, setMode] = useState<BrowseMode>("offering");
@@ -244,8 +321,44 @@ export default function HomePage() {
     quantity: number;
   } | null>(null);
 
-  const askingItems = useMemo(() => aggregateItems("asking", orgs), []);
-  const offeringItems = useMemo(() => aggregateItems("offering", orgs), []);
+  const [realOrgs, setRealOrgs] = useState<OrgDoc[]>([]);
+  const [realAskingListings, setRealAskingListings] = useState<ListingDoc[]>([]);
+  const [realOfferingListings, setRealOfferingListings] = useState<ListingDoc[]>([]);
+
+  useEffect(() => {
+    const unsubOrgs = subscribeAllOrgs(setRealOrgs);
+    const unsubAsking = subscribeActiveListingsByKind("asking", setRealAskingListings);
+    const unsubOffering = subscribeActiveListingsByKind("offering", setRealOfferingListings);
+
+    return () => {
+      unsubOrgs();
+      unsubAsking();
+      unsubOffering();
+    };
+  }, []);
+
+  const fillerAskingItems = useMemo(() => aggregateItems("asking", orgs), []);
+  const fillerOfferingItems = useMemo(() => aggregateItems("offering", orgs), []);
+
+  const realAskingItems = useMemo(
+    () => aggregateFirestoreItems("asking", realAskingListings, realOrgs),
+    [realAskingListings, realOrgs]
+  );
+
+  const realOfferingItems = useMemo(
+    () => aggregateFirestoreItems("offering", realOfferingListings, realOrgs),
+    [realOfferingListings, realOrgs]
+  );
+
+  const askingItems = useMemo(
+    () => mergeAggregates(fillerAskingItems, realAskingItems),
+    [fillerAskingItems, realAskingItems]
+  );
+
+  const offeringItems = useMemo(
+    () => mergeAggregates(fillerOfferingItems, realOfferingItems),
+    [fillerOfferingItems, realOfferingItems]
+  );
 
   const aggregates = mode === "asking" ? offeringItems : askingItems;
 
@@ -257,7 +370,6 @@ export default function HomePage() {
       const haystack = [
         item.name,
         item.category,
-        item.description,
         item.tags.join(" "),
         ...item.sources.map((source) => source.orgName),
         ...item.sources.map((source) => source.location),
@@ -319,11 +431,12 @@ export default function HomePage() {
     );
   };
 
-  const handleMessageOrg = (source: AggregateSource) => {
-    const threadId = openConversationThread({
-      orgLabel: source.orgName,
-      memberOrgLabel: "Neighbouring organisation",
-      createdBy: "member_org",
+  const handleMessageOrg = async (source: AggregateSource) => {
+    const threadId = await openOrCreateThread({
+      currentOrgId: "neighbouring-organisation",
+      currentOrgName: "Neighbouring organisation",
+      otherOrgId: source.orgId,
+      otherOrgName: source.orgName,
       subject: "Conversation",
     });
 
@@ -508,17 +621,18 @@ export default function HomePage() {
           </Paper>
         </Stack>
       </Container>
-    <AggregatedItemOverlay
-      open={overlayOpen}
-      mode={overlayMode}
-      item={selectedItem}
-      requestSelection={requestSelection}
-      showImage={mode !== "asking"}
-      onClose={() => setOverlayOpen(false)}
-      onSourceQuantityChange={handleSourceQuantityChange}
-      onRequest={handleRequest}
-      onMessageOrg={handleMessageOrg}
-    />
+
+      <AggregatedItemOverlay
+        open={overlayOpen}
+        mode={overlayMode}
+        item={selectedItem}
+        requestSelection={requestSelection}
+        showImage={mode !== "asking"}
+        onClose={() => setOverlayOpen(false)}
+        onSourceQuantityChange={handleSourceQuantityChange}
+        onRequest={handleRequest}
+        onMessageOrg={handleMessageOrg}
+      />
     </Box>
   );
 }

@@ -1,18 +1,28 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { Box, Button, Container, Paper, Stack, Typography } from "@mui/material";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+
 import OrgProfileHeader from "@/app/components/org/OrgProfileHeader";
 import InventorySection from "@/app/components/org/InventorySection";
 import InventoryItemDialog from "@/app/components/org/InventoryItemDialog";
-import BulkDetectedItemsDialog, {
-  type InventoryDraftItem,
-  defaultImageForCategory,
-  makeBlankScannedDraft,
-  makeScannedDraftFromDetection,
-} from "@/app/components/org/BulkDetectedItemsDialog";
-import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+
+import { DEMO_ORG } from "@/app/lib/demoContext";
+import { subscribeOrg, upsertOrg } from "@/app/lib/firestore/orgs";
+import {
+  createListing,
+  deleteListing,
+  subscribeOrgListings,
+  updateListing,
+} from "@/app/lib/firestore/listings";
+import {
+  listingToAskingItem,
+  listingToOfferingItem,
+  orgDocToProfile,
+} from "@/app/lib/firestore/orgPageMappers";
+
 import type {
   AskingItem,
   InventoryItem,
@@ -20,76 +30,79 @@ import type {
   OfferingItem,
   OrgProfile,
 } from "@/app/components/org/types";
+import type { ListingDoc, OrgDoc } from "@/app/lib/firestore/types";
 
-const initialOrg: OrgProfile = {
-  id: "humanity-project",
-  name: "The Humanity Project",
-  bio: "Helping the Moncton community with essentials, outreach support, and day-to-day resources for people who need them most.",
-  phoneNumber: "(506) 555-0187",
-  address: "123 Main Street, Moncton, NB E1C 1A1",
-  location: "Moncton, NB",
-  bannerImage:
-    "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=1600&q=80",
-  avatarImage: "",
-  askingItems: [
-    {
-      id: "1",
-      name: "Winter Coats",
-      category: "clothing",
-      urgency: "high",
-      quantity: 12,
-      image: "",
-    },
-    {
-      id: "2",
-      name: "Toothbrushes",
-      category: "hygiene",
-      urgency: "medium",
-      quantity: 40,
-      image: "",
-    },
-  ],
-  offeringItems: [
-    {
-      id: "o1",
-      name: "Bottled Water",
-      category: "food",
-      expiration: "2026-04-10",
-      quantity: 24,
-      image: "https://placehold.co/120x120?text=Water",
-    },
-    {
-      id: "o2",
-      name: "Blankets",
-      category: "supplies",
-      quantity: 8,
-      image: "https://placehold.co/120x120?text=Blanket",
-    },
-  ],
-};
-
-function makeId() {
-  return Math.random().toString(36).slice(2, 10);
-}
+const FALLBACK_BANNER =
+  "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=1600&q=80";
 
 export default function OrgPage() {
   const router = useRouter();
+  const params = useParams<{ orgId: string }>();
 
-  const [org, setOrg] = useState<OrgProfile>(initialOrg);
+  const currentOrgId =
+    typeof params?.orgId === "string" && params.orgId.trim()
+      ? params.orgId
+      : DEMO_ORG.id;
+
+  const [orgDoc, setOrgDoc] = useState<OrgDoc | null>(null);
+  const [askingListings, setAskingListings] = useState<ListingDoc[]>([]);
+  const [offeringListings, setOfferingListings] = useState<ListingDoc[]>([]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
   const [dialogKind, setDialogKind] = useState<InventoryKind>("asking");
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
 
-  const [scanLoading, setScanLoading] = useState(false);
-  const [scanDialogOpen, setScanDialogOpen] = useState(false);
-  const [scanKind, setScanKind] = useState<InventoryKind>("offering");
-  const [scannedItems, setScannedItems] = useState<InventoryDraftItem[]>([]);
+  const bioSaveTimeoutRef = useRef<number | null>(null);
 
-  const [scanAction, setScanAction] = useState<"add" | "delete">("add");
+  useEffect(() => {
+    const unsubOrg = subscribeOrg(currentOrgId, setOrgDoc);
+    const unsubAsking = subscribeOrgListings(currentOrgId, "asking", setAskingListings);
+    const unsubOffering = subscribeOrgListings(
+      currentOrgId,
+      "offering",
+      setOfferingListings
+    );
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+    return () => {
+      unsubOrg();
+      unsubAsking();
+      unsubOffering();
+
+      if (bioSaveTimeoutRef.current) {
+        window.clearTimeout(bioSaveTimeoutRef.current);
+      }
+    };
+  }, [currentOrgId]);
+
+  const org = useMemo<OrgProfile>(() => {
+    if (!orgDoc) {
+      return {
+        id: currentOrgId,
+        name: currentOrgId === DEMO_ORG.id ? DEMO_ORG.name : currentOrgId,
+        bio: "",
+        phoneNumber: "",
+        address: "",
+        location: "",
+        bannerImage: FALLBACK_BANNER,
+        avatarImage: "",
+        askingItems: askingListings.map(listingToAskingItem),
+        offeringItems: offeringListings.map(listingToOfferingItem),
+      };
+    }
+
+    const mapped = orgDocToProfile(
+      orgDoc,
+      askingListings.map(listingToAskingItem),
+      offeringListings.map(listingToOfferingItem)
+    );
+
+    return {
+      ...mapped,
+      bannerImage: mapped.bannerImage || FALLBACK_BANNER,
+      avatarImage: mapped.avatarImage || "",
+    };
+  }, [currentOrgId, orgDoc, askingListings, offeringListings]);
 
   const handleOpenAdd = (kind: InventoryKind) => {
     setDialogMode("add");
@@ -110,255 +123,85 @@ export default function OrgPage() {
     setEditingItem(null);
   };
 
-  const handleSaveItem = (item: InventoryItem) => {
-    setOrg((prev) => {
-      if (dialogKind === "asking") {
-        const nextItem = item as AskingItem;
-        const exists = prev.askingItems.some((value) => value.id === nextItem.id);
+  const handleSaveItem = async (item: InventoryItem) => {
+    const currentOrgName = org.name || DEMO_ORG.name;
 
-        return {
-          ...prev,
-          askingItems: exists
-            ? prev.askingItems.map((value) =>
-                value.id === nextItem.id ? nextItem : value
-              )
-            : [nextItem, ...prev.askingItems],
-        };
+    if (dialogKind === "asking") {
+      const askingItem = item as AskingItem;
+
+      if (dialogMode === "edit") {
+        await updateListing(askingItem.id, {
+          name: askingItem.name,
+          category: askingItem.category,
+          quantity: askingItem.quantity,
+          imageUrl: askingItem.image,
+          urgency: askingItem.urgency,
+        });
+      } else {
+        await createListing({
+          orgId: currentOrgId,
+          orgNameSnapshot: currentOrgName,
+          kind: "asking",
+          name: askingItem.name,
+          category: askingItem.category,
+          quantity: askingItem.quantity,
+          imageUrl: askingItem.image,
+          urgency: askingItem.urgency,
+        });
       }
+    } else {
+      const offeringItem = item as OfferingItem;
 
-      const nextItem = item as OfferingItem;
-      const exists = prev.offeringItems.some((value) => value.id === nextItem.id);
-
-      return {
-        ...prev,
-        offeringItems: exists
-          ? prev.offeringItems.map((value) =>
-              value.id === nextItem.id ? nextItem : value
-            )
-          : [nextItem, ...prev.offeringItems],
-      };
-    });
+      if (dialogMode === "edit") {
+        await updateListing(offeringItem.id, {
+          name: offeringItem.name,
+          category: offeringItem.category,
+          quantity: offeringItem.quantity,
+          imageUrl: offeringItem.image,
+          expiration: offeringItem.expiration || undefined,
+      });
+      } else {
+        await createListing({
+          orgId: currentOrgId,
+          orgNameSnapshot: currentOrgName,
+          kind: "offering",
+          name: offeringItem.name,
+          category: offeringItem.category,
+          quantity: offeringItem.quantity,
+          imageUrl: offeringItem.image,
+          expiration: offeringItem.expiration,
+        });
+      }
+    }
 
     handleCloseDialog();
   };
 
-  const handleDeleteMany = (kind: InventoryKind, ids: string[]) => {
-    setOrg((prev) => {
-      if (kind === "asking") {
-        return {
-          ...prev,
-          askingItems: prev.askingItems.filter((item) => !ids.includes(item.id)),
-        };
-      }
-
-      return {
-        ...prev,
-        offeringItems: prev.offeringItems.filter((item) => !ids.includes(item.id)),
-      };
-    });
+  const handleDeleteMany = async (_kind: InventoryKind, ids: string[]) => {
+    await Promise.all(ids.map((id) => deleteListing(id)));
   };
 
-  const handleOpenCameraScan = (
-    kind: InventoryKind,
-    action: "add" | "delete"
-  ) => {
-    if (scanLoading || kind !== "offering") return;
-    setScanKind(kind);
-    setScanAction(action);
-    fileInputRef.current?.click();
-  };
-
-  const handleCameraFileChange = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      setScanLoading(true);
-
-      const formData = new FormData();
-      formData.append("image", file);
-
-      if (scanAction === "add") {
-        const response = await fetch("/api/vision-items", {
-          method: "POST",
-          body: formData,
-        });
-
-        const raw = await response.text();
-        let data: any;
-        try {
-          data = JSON.parse(raw);
-        } catch {
-          console.error("add route raw response:", raw);
-          throw new Error(raw || "Add route did not return JSON.");
-        }
-
-        if (!response.ok) {
-          throw new Error(data?.error || "Failed to scan image.");
-        }
-
-        const detected = Array.isArray(data?.items) ? data.items : [];
-
-        const nextDrafts =
-          detected.length > 0
-            ? detected.map((item: { quantity: number; name: string }) =>
-                makeScannedDraftFromDetection(scanKind, item)
-              )
-            : [makeBlankScannedDraft(scanKind)];
-
-        setScannedItems(nextDrafts);
-        setScanDialogOpen(true);
-        return;
-      }
-
-      formData.append(
-        "items",
-        JSON.stringify(
-          org.offeringItems.map((item) => ({
-            id: item.id,
-            name: item.name,
-            category: item.category,
-            quantity: item.quantity,
-            expiration: item.expiration,
-          }))
-        )
-      );
-
-      const response = await fetch("/api/vision-delete-items", {
-        method: "POST",
-        body: formData,
-      });
-
-      const raw = await response.text();
-      let data: any;
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        console.error("delete route raw response:", raw);
-        throw new Error(raw || "Delete route did not return JSON.");
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.error || "Failed to compare image.");
-      }
-
-      const matchedItems = Array.isArray(data?.matched_items)
-        ? data.matched_items
-        : [];
-
-      const nextDrafts =
-        matchedItems.length > 0
-          ? matchedItems
-              .map((match: { id: string; quantity_found: number }) => {
-                const source = org.offeringItems.find((item) => item.id === match.id);
-                if (!source) return null;
-
-                return {
-                  tempId: makeId(),
-                  sourceId: source.id,
-                  name: source.name,
-                  quantity: String(Math.max(1, match.quantity_found || 1)),
-                  category: source.category,
-                  urgency: "medium" as const,
-                  expiration: source.expiration ?? "",
-                  image: source.image,
-                };
-              })
-              .filter(Boolean) as InventoryDraftItem[]
-          : [];
-
-      setScannedItems(nextDrafts);
-      setScanDialogOpen(true);
-    } catch (error) {
-      console.error(error);
-      window.alert("Could not process that image.");
-    } finally {
-      setScanLoading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  };
-
-  const handleCloseScanDialog = () => {
-    setScanDialogOpen(false);
-    setScannedItems([]);
-  };
-
-  const handleConfirmScannedItems = (items: InventoryDraftItem[]) => {
-    if (scanAction === "delete") {
-      const deleteMap = new Map<string, number>();
-
-      for (const item of items) {
-        if (!item.sourceId) continue;
-
-        const parsed = Number.parseInt(item.quantity, 10);
-        const quantityToRemove =
-          Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-
-        deleteMap.set(item.sourceId, quantityToRemove);
-      }
-
-      if (deleteMap.size === 0) {
-        handleCloseScanDialog();
-        return;
-      }
-
-      setOrg((prev) => ({
-        ...prev,
-        offeringItems: prev.offeringItems
-          .map((item) => {
-            const quantityToRemove = deleteMap.get(item.id);
-            if (!quantityToRemove) return item;
-
-            const remaining = item.quantity - quantityToRemove;
-
-            if (remaining <= 0) {
-              return null;
-            }
-
-            return {
-              ...item,
-              quantity: remaining,
-            };
-          })
-          .filter((item): item is OfferingItem => item !== null),
-      }));
-
-      handleCloseScanDialog();
-      return;
+  const handleBioChange = (value: string) => {
+    if (bioSaveTimeoutRef.current) {
+      window.clearTimeout(bioSaveTimeoutRef.current);
     }
 
-    const valid = items.filter((item) => item.name.trim());
-
-    if (valid.length === 0) return;
-
-    setOrg((prev) => {
-      const finalized: OfferingItem[] = valid.map((item) => {
-        const parsedQuantity = Number.parseInt(item.quantity, 10);
-
-        return {
-          id: makeId(),
-          name: item.name.trim(),
-          category: item.category,
-          expiration: item.expiration || undefined,
-          quantity:
-            Number.isFinite(parsedQuantity) && parsedQuantity > 0
-              ? parsedQuantity
-              : 1,
-          image: item.image || defaultImageForCategory(item.category),
-        };
+    bioSaveTimeoutRef.current = window.setTimeout(async () => {
+      await upsertOrg({
+        id: currentOrgId,
+        name: org.name || DEMO_ORG.name,
+        bio: value,
+        phoneNumber: org.phoneNumber || "",
+        address: org.address || "",
+        location: org.location || "",
+        bannerImageUrl: org.bannerImage || FALLBACK_BANNER,
+        isActive: true,
       });
+    }, 350);
+  };
 
-      return {
-        ...prev,
-        offeringItems: [...finalized, ...prev.offeringItems],
-      };
-    });
-
-    handleCloseScanDialog();
+  const handleCameraNotImplemented = () => {
+    window.alert("Camera sync is not wired to Firestore yet.");
   };
 
   return (
@@ -388,6 +231,7 @@ export default function OrgPage() {
               >
                 Organization dashboard
               </Typography>
+
               <Typography
                 sx={{
                   m: 0,
@@ -400,28 +244,29 @@ export default function OrgPage() {
                 Member organisation profile
               </Typography>
             </Box>
-          <Button
-            startIcon={<ChatBubbleOutlineRoundedIcon />}
-            onClick={() => router.push("/messages/org")}
-            sx={{
-              borderRadius: 999,
-              px: 2.2,
-              py: 1.1,
-              bgcolor: "var(--accent)",
-              color: "white",
-              fontWeight: 800,
-              textTransform: "none",
-              "& .MuiButton-startIcon": {
+
+            <Button
+              startIcon={<ChatBubbleOutlineRoundedIcon />}
+              onClick={() => router.push("/messages/org")}
+              sx={{
+                borderRadius: 999,
+                px: 2.2,
+                py: 1.1,
+                bgcolor: "var(--accent)",
                 color: "white",
-              },
-              "&:hover": {
-                bgcolor: "var(--accent-strong)",
-                color: "white",
-              },
-            }}
-          >
-            Message
-          </Button>
+                fontWeight: 800,
+                textTransform: "none",
+                "& .MuiButton-startIcon": {
+                  color: "white",
+                },
+                "&:hover": {
+                  bgcolor: "var(--accent-strong)",
+                  color: "white",
+                },
+              }}
+            >
+              Message
+            </Button>
           </Box>
 
           <Paper
@@ -435,14 +280,30 @@ export default function OrgPage() {
               boxShadow: "var(--shadow)",
             }}
           >
-            <OrgProfileHeader
-              org={org}
-              onBioChange={(value) =>
-                setOrg((prev) => ({
-                  ...prev,
-                  bio: value,
-                }))
-              }
+            <OrgProfileHeader org={org} onBioChange={handleBioChange} />
+          </Paper>
+
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 1.5, md: 2 },
+              borderRadius: "28px",
+              border: "1px solid var(--border)",
+              bgcolor: "var(--surface)",
+              boxShadow: "var(--shadow-soft)",
+            }}
+          >
+            <InventorySection
+              kind="asking"
+              title="Wishlist"
+              description={`These items are currently in need at ${org.id}. Anyone interested in making a donation may view them, and you will be notified when another organisation is offering them. Add items to the wishlist with the + icon, and remove them when no longer needed by clicking the trash icon. You can also search for something specific, look for only items in a certain category, and sort by urgency if you'd like. Click on any existing item to change something about it.`}
+              items={org.askingItems}
+              onAddManual={() => handleOpenAdd("asking")}
+              onAddCamera={() => {}}
+              onDeleteManual={() => {}}
+              onDeleteMany={(ids) => handleDeleteMany("asking", ids)}
+              onDeleteCamera={() => {}}
+              onEdit={(item) => handleOpenEdit("asking", item)}
             />
           </Paper>
 
@@ -456,42 +317,18 @@ export default function OrgPage() {
               boxShadow: "var(--shadow-soft)",
             }}
           >
-          <InventorySection
-            kind="asking"
-            title="Wishlist"
-            description={`These items are currently in need at ${org.id}. Anyone interested in making a donation may view them, and you will be notified when another organisation is offering them. Add items to the wishlist with + icon, and remove them when no longer needed by clicking the trash icon. You can also search for something specific, look for only items in a certain category, and sort by urgency if you'd like. Click on any existing item to change something about it.`}
-            items={org.askingItems}
-            onAddManual={() => handleOpenAdd("asking")}
-            onAddCamera={() => {}}
-            onDeleteManual={() => {}}
-            onDeleteMany={(ids) => handleDeleteMany("asking", ids)}
-            onDeleteCamera={() => {}}
-            onEdit={(item) => handleOpenEdit("asking", item)}
-          />
-          </Paper>
-
-          <Paper
-            elevation={0}
-            sx={{
-              p: { xs: 1.5, md: 2 },
-              borderRadius: "28px",
-              border: "1px solid var(--border)",
-              bgcolor: "var(--surface)",
-              boxShadow: "var(--shadow-soft)",
-            }}
-          >
-          <InventorySection
-            kind="offering"
-            title="Offerings"
-            description={`${org.id} has an over-abundance of these items, and is ready to share them with other organisation members. When you have too much of something, update this list with the + button, OR take a picture of everything at once to update automatically. When things get picked up or used, remove them from the list by clicking the trash icon, where you can choose to use the camera again.`}
-            items={org.offeringItems}
-            onAddManual={() => handleOpenAdd("offering")}
-            onAddCamera={() => handleOpenCameraScan("offering", "add")}
-            onDeleteManual={() => {}}
-            onDeleteMany={(ids) => handleDeleteMany("offering", ids)}
-            onDeleteCamera={() => handleOpenCameraScan("offering", "delete")}
-            onEdit={(item) => handleOpenEdit("offering", item)}
-          />
+            <InventorySection
+              kind="offering"
+              title="Offerings"
+              description={`${org.id} has an over-abundance of these items, and is ready to share them with other organisation members. When you have too much of something, update this list with the + button, or take a picture of everything at once to update automatically later. When things get picked up or used, remove them from the list by clicking the trash icon.`}
+              items={org.offeringItems}
+              onAddManual={() => handleOpenAdd("offering")}
+              onAddCamera={handleCameraNotImplemented}
+              onDeleteManual={() => {}}
+              onDeleteMany={(ids) => handleDeleteMany("offering", ids)}
+              onDeleteCamera={handleCameraNotImplemented}
+              onEdit={(item) => handleOpenEdit("offering", item)}
+            />
           </Paper>
         </Stack>
       </Container>
@@ -504,25 +341,6 @@ export default function OrgPage() {
         item={editingItem}
         onClose={handleCloseDialog}
         onSave={handleSaveItem}
-      />
-
-      <BulkDetectedItemsDialog
-        open={scanDialogOpen}
-        kind={scanKind}
-        action={scanAction}
-        items={scannedItems}
-        onClose={handleCloseScanDialog}
-        onChange={setScannedItems}
-        onConfirm={handleConfirmScannedItems}
-      />
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        hidden
-        onChange={handleCameraFileChange}
       />
     </Box>
   );

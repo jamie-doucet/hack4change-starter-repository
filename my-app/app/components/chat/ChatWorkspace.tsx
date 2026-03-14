@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Divider,
@@ -14,54 +14,80 @@ import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RequestMessageBubble from "./RequestMessageBubble";
 import {
-  getPeerLabel,
-  markThreadRead,
-  readChatState,
+  sendSystemMessage,
   sendTextMessage,
-  subscribeChatState,
-} from "@/app/lib/chat/chatStore";
-import type { ChatRole, ChatThread } from "@/app/lib/chat/chatTypes";
-import { updateRequestMessageStatus } from "@/app/lib/chat/chatStore";
+  subscribeMessages,
+  subscribeThreadsForOrg,
+  updateRequestMessageStatus,
+} from "@/app/lib/firestore/messages";
+import {
+  cancelHeldRequest,
+  completeHeldRequest,
+  getRequestById,
+  getRequestLinesOnce,
+  holdRequestInventory,
+} from "@/app/lib/firestore/requests";
+import type {
+  ChatMessage,
+  ChatRole,
+  ChatThread,
+} from "@/app/lib/chat/chatTypes";
 
 type Props = {
   viewerRole: ChatRole;
   title: string;
+  currentOrgId: string;
+  currentOrgName: string;
 };
 
-function formatTime(timestamp: number) {
-  const date = new Date(timestamp);
+function formatTime(value: any) {
+  const date =
+    typeof value?.toDate === "function"
+      ? value.toDate()
+      : value instanceof Date
+        ? value
+        : typeof value === "number"
+          ? new Date(value)
+          : null;
+
+  if (!date) return "";
+
   return date.toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
   });
 }
 
+function getPeerLabel(thread: ChatThread, currentOrgId: string) {
+  const otherOrgId = thread.orgIds.find((id) => id !== currentOrgId);
+  if (!otherOrgId) return "Conversation";
+  return thread.orgNames?.[otherOrgId] ?? otherOrgId;
+}
+
 function lastMessagePreview(thread: ChatThread) {
-  const last = thread.messages[thread.messages.length - 1];
-  if (!last) return "No messages yet.";
-  return last.text;
+  return thread.lastMessageText || "No messages yet.";
 }
 
 export default function ChatWorkspace({
   viewerRole,
   title,
+  currentOrgId,
+  currentOrgName,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState("");
   const [draft, setDraft] = useState("");
 
-  useEffect(() => {
-    const sync = () => {
-      setThreads(readChatState().threads);
-    };
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
 
-    sync();
-    return subscribeChatState(sync);
-  }, []);
+  useEffect(() => {
+    return subscribeThreadsForOrg(currentOrgId, setThreads);
+  }, [currentOrgId]);
 
   useEffect(() => {
     const requestedThread = searchParams.get("thread");
@@ -77,36 +103,146 @@ export default function ChatWorkspace({
   }, [threads, searchParams, selectedThreadId]);
 
   useEffect(() => {
-    if (!selectedThreadId) return;
+    if (!selectedThreadId) {
+      setMessages([]);
+      return;
+    }
 
-    markThreadRead(selectedThreadId, viewerRole);
     router.replace(`${pathname}?thread=${selectedThreadId}`);
-  }, [selectedThreadId, viewerRole, pathname, router]);
+    return subscribeMessages(selectedThreadId, setMessages);
+  }, [selectedThreadId, pathname, router]);
 
   const selectedThread = useMemo(
     () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
     [threads, selectedThreadId]
   );
 
-  const handleSend = () => {
+  useEffect(() => {
+    if (!selectedThreadId) return;
+
+    const el = messagesViewportRef.current;
+    if (!el) return;
+
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages, selectedThreadId]);
+
+  const handleSend = async () => {
     if (!selectedThreadId || !draft.trim()) return;
 
-    sendTextMessage({
-      threadId: selectedThreadId,
-      senderRole: viewerRole,
-      text: draft,
-    });
+    try {
+      await sendTextMessage({
+        threadId: selectedThreadId,
+        senderRole: viewerRole,
+        senderOrgId: currentOrgId,
+        senderOrgName: currentOrgName,
+        text: draft,
+      });
 
-    setDraft("");
+      setDraft("");
+    } catch (error) {
+      console.error(error);
+      window.alert("Could not send message.");
+    }
+  };
+
+  const handleHoldRequest = async (messageId: string, requestId?: string) => {
+    if (!selectedThread || !requestId) return;
+
+    try {
+      const request = await getRequestById(requestId);
+      if (!request) {
+        window.alert("Request not found.");
+        return;
+      }
+
+      const lines = await getRequestLinesOnce(requestId);
+      await holdRequestInventory(request, lines);
+
+      await updateRequestMessageStatus({
+        threadId: selectedThread.id,
+        messageId,
+        status: "held",
+      });
+
+      await sendSystemMessage({
+        threadId: selectedThread.id,
+        senderOrgId: currentOrgId,
+        senderOrgName: currentOrgName,
+        requestId,
+        text: "Automatic reply: Your request has been accepted and placed on hold. Please collect it within 48 hours or it may be released.",
+      });
+    } catch (error) {
+      console.error(error);
+      window.alert("Could not hold this request.");
+    }
+  };
+
+  const handleDoneRequest = async (messageId: string, requestId?: string) => {
+    if (!selectedThread || !requestId) return;
+
+    try {
+      const request = await getRequestById(requestId);
+      if (!request) {
+        window.alert("Request not found.");
+        return;
+      }
+
+      const lines = await getRequestLinesOnce(requestId);
+      await completeHeldRequest(request, lines);
+
+      await updateRequestMessageStatus({
+        threadId: selectedThread.id,
+        messageId,
+        status: "completed",
+      });
+    } catch (error) {
+      console.error(error);
+      window.alert("Could not complete this request.");
+    }
+  };
+
+  const handleCancelRequest = async (messageId: string, requestId?: string) => {
+    if (!selectedThread || !requestId) return;
+
+    try {
+      const request = await getRequestById(requestId);
+      if (!request) {
+        window.alert("Request not found.");
+        return;
+      }
+
+      const lines = await getRequestLinesOnce(requestId);
+      await cancelHeldRequest(request, lines);
+
+      await updateRequestMessageStatus({
+        threadId: selectedThread.id,
+        messageId,
+        status: "cancelled",
+      });
+
+      await sendSystemMessage({
+        threadId: selectedThread.id,
+        senderOrgId: currentOrgId,
+        senderOrgName: currentOrgName,
+        requestId,
+        text: "Automatic reply: This request has been cancelled.",
+      });
+    } catch (error) {
+      console.error(error);
+      window.alert("Could not cancel this request.");
+    }
   };
 
   return (
     <Box
-      className="org-page-bg"
       sx={{
-        width: "100%",
-        height: "100dvh",
+        position: "fixed",
+        inset: { xs: "0 0 78px 0", md: "72px 0 0 0" },
         overflow: "hidden",
+        bgcolor: "var(--background)",
       }}
     >
       <Paper
@@ -161,7 +297,7 @@ export default function ChatWorkspace({
                   fontSize: "0.94rem",
                 }}
               >
-                Conversations update live between open tabs.
+                Conversations update live through Firestore.
               </Typography>
             </Box>
 
@@ -182,81 +318,78 @@ export default function ChatWorkspace({
                   No conversations yet.
                 </Typography>
               ) : (
-                threads.map((thread) => {
-                  return (
-                    <Box
-                      key={thread.id}
-                      onClick={() => setSelectedThreadId(thread.id)}
-                      sx={{
-                        p: 1.25,
-                        borderRadius: "18px",
-                        cursor: "pointer",
-                        bgcolor:
-                          selectedThreadId === thread.id
-                            ? "var(--accent-soft)"
-                            : "transparent",
-                        border:
-                          selectedThreadId === thread.id
-                            ? "1px solid rgba(40, 199, 167, 0.3)"
-                            : "1px solid transparent",
-                        transition: "0.16s ease",
-                        minWidth: 0,
-                      }}
+                threads.map((thread) => (
+                  <Box
+                    key={thread.id}
+                    onClick={() => setSelectedThreadId(thread.id)}
+                    sx={{
+                      p: 1.25,
+                      borderRadius: "18px",
+                      cursor: "pointer",
+                      bgcolor:
+                        selectedThreadId === thread.id
+                          ? "var(--accent-soft)"
+                          : "transparent",
+                      border:
+                        selectedThreadId === thread.id
+                          ? "1px solid rgba(40, 199, 167, 0.3)"
+                          : "1px solid transparent",
+                      transition: "0.16s ease",
+                      minWidth: 0,
+                    }}
+                  >
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="flex-start"
+                      spacing={1}
                     >
-                      <Stack
-                        direction="row"
-                        justifyContent="space-between"
-                        alignItems="flex-start"
-                        spacing={1}
-                      >
-                        <Box sx={{ minWidth: 0, flex: 1 }}>
-                          <Typography
-                            sx={{
-                              fontWeight: 800,
-                              letterSpacing: "-0.02em",
-                            }}
-                            noWrap
-                          >
-                            {getPeerLabel(thread, viewerRole)}
-                          </Typography>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography
+                          sx={{
+                            fontWeight: 800,
+                            letterSpacing: "-0.02em",
+                          }}
+                          noWrap
+                        >
+                          {getPeerLabel(thread, currentOrgId)}
+                        </Typography>
 
-                          <Typography
-                            sx={{
-                              color: "var(--foreground)",
-                              fontSize: "0.92rem",
-                              mt: 0.2,
-                            }}
-                            noWrap
-                          >
-                            {thread.subject}
-                          </Typography>
+                        <Typography
+                          sx={{
+                            color: "var(--foreground)",
+                            fontSize: "0.92rem",
+                            mt: 0.2,
+                          }}
+                          noWrap
+                        >
+                          {thread.subject}
+                        </Typography>
 
-                          <Typography
-                            sx={{
-                              color: "var(--muted)",
-                              fontSize: "0.86rem",
-                              mt: 0.5,
-                            }}
-                            noWrap
-                          >
-                            {lastMessagePreview(thread)}
-                          </Typography>
-                        </Box>
-                      <Stack alignItems="flex-end" spacing={0.5}>
                         <Typography
                           sx={{
                             color: "var(--muted)",
-                            fontSize: "0.8rem",
-                            whiteSpace: "nowrap",
+                            fontSize: "0.86rem",
+                            mt: 0.5,
                           }}
+                          noWrap
                         >
-                          {formatTime(thread.updatedAt)}
+                          {lastMessagePreview(thread)}
                         </Typography>
-                      </Stack>
-                      </Stack>
-                    </Box>
-                  );
-                })
+                      </Box>
+
+                      <Typography
+                        sx={{
+                          color: "var(--muted)",
+                          fontSize: "0.8rem",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatTime(thread.updatedAt || thread.lastMessageAt)}
+                      </Typography>
+                    </Stack>
+                  </Box>
+                ))
               )}
             </Stack>
           </Box>
@@ -265,8 +398,8 @@ export default function ChatWorkspace({
             sx={{
               minWidth: 0,
               minHeight: 0,
-              display: "flex",
-              flexDirection: "column",
+              display: "grid",
+              gridTemplateRows: "auto minmax(0, 1fr) auto",
               overflow: "hidden",
             }}
           >
@@ -276,7 +409,6 @@ export default function ChatWorkspace({
                 py: 1.5,
                 borderBottom: "1px solid var(--border)",
                 bgcolor: "white",
-                flexShrink: 0,
                 minWidth: 0,
               }}
             >
@@ -289,7 +421,7 @@ export default function ChatWorkspace({
                     }}
                     noWrap
                   >
-                    {getPeerLabel(selectedThread, viewerRole)}
+                    {getPeerLabel(selectedThread, currentOrgId)}
                   </Typography>
                   <Typography
                     sx={{ color: "var(--muted)", fontSize: "0.9rem" }}
@@ -304,12 +436,13 @@ export default function ChatWorkspace({
                 </Typography>
               )}
             </Box>
+
             <Stack
+              ref={messagesViewportRef}
               spacing={1.25}
               sx={{
                 p: 2,
                 minHeight: 0,
-                flex: 1,
                 overflowY: "auto",
                 overflowX: "hidden",
                 bgcolor: "#fcfcfa",
@@ -320,72 +453,54 @@ export default function ChatWorkspace({
                 <Typography sx={{ color: "var(--muted)" }}>
                   Open a conversation to start messaging.
                 </Typography>
-              ) : selectedThread.messages.length === 0 ? (
+              ) : messages.length === 0 ? (
                 <Typography sx={{ color: "var(--muted)" }}>
                   No messages yet. Send the first one below.
                 </Typography>
               ) : (
-                selectedThread.messages.map((message) =>
+                messages.map((message) =>
                   message.type === "request" ? (
-                  <RequestMessageBubble
-                    key={message.id}
-                    message={message}
-                    mine={message.senderRole === viewerRole}
-                    viewerRole={viewerRole}
-                    onHold={() =>
-                      updateRequestMessageStatus({
-                        threadId: selectedThread.id,
-                        messageId: message.id,
-                        status: "held",
-                      })
-                    }
-                    onDone={() =>
-                      updateRequestMessageStatus({
-                        threadId: selectedThread.id,
-                        messageId: message.id,
-                        status: "completed",
-                      })
-                    }
-                    onCancel={() =>
-                      updateRequestMessageStatus({
-                        threadId: selectedThread.id,
-                        messageId: message.id,
-                        status: "cancelled",
-                      })
-                    }
-                  />
+                    <RequestMessageBubble
+                      key={message.id}
+                      message={message}
+                      mine={message.senderOrgId === currentOrgId}
+                      viewerRole={viewerRole}
+                      onHold={() => handleHoldRequest(message.id, message.requestId)}
+                      onDone={() => handleDoneRequest(message.id, message.requestId)}
+                      onCancel={() => handleCancelRequest(message.id, message.requestId)}
+                    />
                   ) : (
-                  <Box
-                    key={message.id}
-                    sx={{
-                      maxWidth: "min(520px, 100%)",
-                      width: "fit-content",
-                      minWidth: 0,
-                      flexShrink: 0,
-                      alignSelf:
-                        message.senderRole === viewerRole
-                          ? "flex-end"
-                          : "flex-start",
-                      bgcolor:
-                        message.senderRole === viewerRole
-                          ? "var(--accent)"
-                          : "white",
-                      color:
-                        message.senderRole === viewerRole
-                          ? "white"
-                          : "var(--foreground)",
-                      border:
-                        message.senderRole === viewerRole
-                          ? "none"
-                          : "1px solid var(--border)",
-                      borderRadius: "22px",
-                      px: 1.5,
-                      py: 1.2,
-                      boxShadow: "var(--shadow-soft)",
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
-                    }}
-                  >
+                    <Box
+                      key={message.id}
+                      sx={{
+                        maxWidth: "min(520px, 100%)",
+                        width: "fit-content",
+                        minWidth: 0,
+                        flexShrink: 0,
+                        alignSelf:
+                          message.senderOrgId === currentOrgId
+                            ? "flex-end"
+                            : "flex-start",
+                        bgcolor:
+                          message.senderOrgId === currentOrgId
+                            ? "var(--accent)"
+                            : "white",
+                        color:
+                          message.senderOrgId === currentOrgId
+                            ? "white"
+                            : "var(--foreground)",
+                        border:
+                          message.senderOrgId === currentOrgId
+                            ? "none"
+                            : "1px solid var(--border)",
+                        borderRadius: "22px",
+                        px: 1.5,
+                        py: 1.2,
+                        boxShadow: "var(--shadow-soft)",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                      }}
+                    >
                       <Typography sx={{ whiteSpace: "pre-wrap" }}>
                         {message.text}
                       </Typography>
@@ -409,7 +524,6 @@ export default function ChatWorkspace({
                 p: 2,
                 borderTop: "1px solid var(--border)",
                 bgcolor: "white",
-                flexShrink: 0,
               }}
             >
               <Stack direction="row" spacing={1.25}>
@@ -421,7 +535,7 @@ export default function ChatWorkspace({
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      handleSend();
+                      void handleSend();
                     }
                   }}
                   sx={{
@@ -445,17 +559,20 @@ export default function ChatWorkspace({
                 />
 
                 <Button
-                  onClick={handleSend}
+                  onClick={() => void handleSend()}
                   disabled={!selectedThread || !draft.trim()}
                   startIcon={<SendRoundedIcon />}
                   sx={{
                     minWidth: 120,
                     borderRadius: 999,
                     bgcolor: "var(--accent)",
-                    color: "#08352d",
+                    color: "white",
                     fontWeight: 800,
                     textTransform: "none",
                     flexShrink: 0,
+                    "& .MuiButton-startIcon": {
+                      color: "white",
+                    },
                     "&:hover": {
                       bgcolor: "var(--accent-strong)",
                       color: "white",

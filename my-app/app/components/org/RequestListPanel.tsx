@@ -12,9 +12,15 @@ type Props = {
   orgName: string;
   items: SelectedRequestItem[];
   onSubmit: () => void;
+  submitting?: boolean;
 };
 
-export default function RequestListPanel({ orgName, items, onSubmit }: Props) {
+export default function RequestListPanel({
+  orgName,
+  items,
+  onSubmit,
+  submitting = false,
+}: Props) {
   const totalLines = items.length;
   const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -115,14 +121,14 @@ export default function RequestListPanel({ orgName, items, onSubmit }: Props) {
 
         <Button
           fullWidth
-          disabled={items.length === 0}
+          disabled={items.length === 0 || submitting}
           onClick={onSubmit}
           sx={{
             mt: 2,
             borderRadius: 999,
             py: 1.2,
             bgcolor: "var(--accent)",
-            color: "#08352d",
+            color: "white",
             fontWeight: 800,
             textTransform: "none",
             "&:hover": {
@@ -135,7 +141,7 @@ export default function RequestListPanel({ orgName, items, onSubmit }: Props) {
             },
           }}
         >
-          Send request
+          {submitting ? "Sending..." : "Send request"}
         </Button>
       </Box>
     </Box>

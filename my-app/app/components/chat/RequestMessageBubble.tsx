@@ -12,9 +12,17 @@ type Props = {
   onCancel: () => void;
 };
 
-function formatExpiry(timestamp?: number) {
-  if (!timestamp) return "";
-  const date = new Date(timestamp);
+function formatExpiry(value?: string | number | Date | null) {
+  if (!value) return "";
+
+  const date =
+    value instanceof Date
+      ? value
+      : typeof value === "number"
+      ? new Date(value)
+      : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
 
   return date.toLocaleString([], {
     month: "short",
@@ -150,39 +158,17 @@ export default function RequestMessageBubble({
             </Box>
           ))}
         </Stack>
-      {(canHold || canResolve) && (
-        <Stack
-          direction="row"
-          spacing={1.25}
-          justifyContent="center"
-          sx={{ mt: 1.75 }}
-        >
-          {canHold && (
-            <Button
-              onClick={onHold}
-              sx={{
-                minWidth: 128,
-                minHeight: 46,
-                px: 2.5,
-                borderRadius: 999,
-                bgcolor: "var(--accent)",
-                color: "white",
-                fontWeight: 800,
-                textTransform: "none",
-                "&:hover": {
-                  bgcolor: "var(--accent-strong)",
-                  color: "white",
-                },
-              }}
-            >
-              Hold
-            </Button>
-          )}
 
-          {canResolve && (
-            <>
+        {(canHold || canResolve) && (
+          <Stack
+            direction="row"
+            spacing={1.25}
+            justifyContent="center"
+            sx={{ mt: 1.75 }}
+          >
+            {canHold && (
               <Button
-                onClick={onDone}
+                onClick={onHold}
                 sx={{
                   minWidth: 128,
                   minHeight: 46,
@@ -198,32 +184,55 @@ export default function RequestMessageBubble({
                   },
                 }}
               >
-                Done
+                Hold
               </Button>
+            )}
 
-              <Button
-                onClick={onCancel}
-                sx={{
-                  minWidth: 128,
-                  minHeight: 46,
-                  px: 2.5,
-                  borderRadius: 999,
-                  bgcolor: "#d32f2f",
-                  color: "white",
-                  fontWeight: 800,
-                  textTransform: "none",
-                  "&:hover": {
-                    bgcolor: "#b71c1c",
+            {canResolve && (
+              <>
+                <Button
+                  onClick={onDone}
+                  sx={{
+                    minWidth: 128,
+                    minHeight: 46,
+                    px: 2.5,
+                    borderRadius: 999,
+                    bgcolor: "var(--accent)",
                     color: "white",
-                  },
-                }}
-              >
-                Cancel
-              </Button>
-            </>
-          )}
-        </Stack>
-      )}
+                    fontWeight: 800,
+                    textTransform: "none",
+                    "&:hover": {
+                      bgcolor: "var(--accent-strong)",
+                      color: "white",
+                    },
+                  }}
+                >
+                  Done
+                </Button>
+
+                <Button
+                  onClick={onCancel}
+                  sx={{
+                    minWidth: 128,
+                    minHeight: 46,
+                    px: 2.5,
+                    borderRadius: 999,
+                    bgcolor: "#d32f2f",
+                    color: "white",
+                    fontWeight: 800,
+                    textTransform: "none",
+                    "&:hover": {
+                      bgcolor: "#b71c1c",
+                      color: "white",
+                    },
+                  }}
+                >
+                  Cancel
+                </Button>
+              </>
+            )}
+          </Stack>
+        )}
       </Box>
     </Box>
   );

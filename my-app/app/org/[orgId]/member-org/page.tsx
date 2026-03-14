@@ -4,30 +4,42 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
-  Chip,
   Container,
   Paper,
   Stack,
   Typography,
 } from "@mui/material";
 import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+
 import OrgProfileHeader from "@/app/components/org/OrgProfileHeader";
 import OfferingRequestCard from "@/app/components/org/OfferingRequestCard";
 import RequestListPanel from "@/app/components/org/RequestListPanel";
 import InventoryBrowseControls from "@/app/components/org/InventoryBrowseControls";
-import { useRouter, useSearchParams } from "next/navigation";import {
-  appendRequestMessage,
-  openConversationThread,
-} from "@/app/lib/chat/chatStore";
-import WishlistPreviewCard from "@/app/components/org/WishlistPreviewCard";import type {
+import WishlistPreviewCard from "@/app/components/org/WishlistPreviewCard";
+
+import { DEMO_MEMBER_ORG } from "@/app/lib/demoContext";
+import { subscribeOrg } from "@/app/lib/firestore/orgs";
+import { subscribeOrgListings } from "@/app/lib/firestore/listings";
+import { createRequest } from "@/app/lib/firestore/requests";
+import { normalizeItemKey } from "@/app/lib/firestore/helpers";
+import {
+  listingToAskingItem,
+  listingToOfferingItem,
+  orgDocToProfile,
+} from "@/app/lib/firestore/orgPageMappers";
+
+import type {
   AskingItem,
   ItemCategory,
   ItemUrgency,
   OfferingItem,
   OrgProfile,
 } from "@/app/components/org/types";
+import type { ListingDoc, OrgDoc } from "@/app/lib/firestore/types";
+import { appendRequestMessage, openOrCreateThread, sendSystemMessage } from "@/app/lib/firestore/messages";
 
-const viewedOrg: OrgProfile = {
+const fallbackViewedOrg: OrgProfile = {
   id: "humanity-project",
   name: "The Humanity Project",
   bio: "Helping the Moncton community with essentials, outreach support, and day-to-day resources for people who need them most.",
@@ -89,23 +101,85 @@ const viewedOrg: OrgProfile = {
   ],
 };
 
-function urgencyColor(urgency: AskingItem["urgency"]) {
-  if (urgency === "low") return "#2e7d32";
-  if (urgency === "medium") return "#b26a00";
-  return "#c62828";
-}
-
 export default function MemberOrgOfferingsPage() {
   const router = useRouter();
+  const params = useParams<{ orgId: string }>();
   const searchParams = useSearchParams();
-  const [requestedQuantities, setRequestedQuantities] = useState<Record<string, number>>({});
+
+  const viewedOrgId =
+    typeof params?.orgId === "string" && params.orgId.trim()
+      ? params.orgId
+      : fallbackViewedOrg.id;
+
+  const [orgDoc, setOrgDoc] = useState<OrgDoc | null>(null);
+  const [askingListings, setAskingListings] = useState<ListingDoc[]>([]);
+  const [offeringListings, setOfferingListings] = useState<ListingDoc[]>([]);
+
+  const [requestedQuantities, setRequestedQuantities] = useState<Record<string, number>>(
+    {}
+  );
 
   const [offeringSearch, setOfferingSearch] = useState("");
-  const [offeringCategoryFilter, setOfferingCategoryFilter] = useState<ItemCategory[]>([]);
+  const [offeringCategoryFilter, setOfferingCategoryFilter] = useState<ItemCategory[]>(
+    []
+  );
 
   const [wishlistSearch, setWishlistSearch] = useState("");
-  const [wishlistCategoryFilter, setWishlistCategoryFilter] = useState<ItemCategory[]>([]);
-  const [wishlistUrgencyFilter, setWishlistUrgencyFilter] = useState<"all" | ItemUrgency>("all");
+  const [wishlistCategoryFilter, setWishlistCategoryFilter] = useState<ItemCategory[]>(
+    []
+  );
+  const [wishlistUrgencyFilter, setWishlistUrgencyFilter] = useState<
+    "all" | ItemUrgency
+  >("all");
+
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const unsubOrg = subscribeOrg(viewedOrgId, setOrgDoc);
+    const unsubAsking = subscribeOrgListings(viewedOrgId, "asking", setAskingListings);
+    const unsubOffering = subscribeOrgListings(
+      viewedOrgId,
+      "offering",
+      setOfferingListings
+    );
+
+    return () => {
+      unsubOrg();
+      unsubAsking();
+      unsubOffering();
+    };
+  }, [viewedOrgId]);
+
+  const viewedOrg = useMemo<OrgProfile>(() => {
+    const realHasAnyData =
+      !!orgDoc || askingListings.length > 0 || offeringListings.length > 0;
+
+    if (!realHasAnyData) {
+      return {
+        ...fallbackViewedOrg,
+        id: viewedOrgId,
+      };
+    }
+
+    const baseOrg =
+      orgDoc ??
+      ({
+        id: viewedOrgId,
+        name: fallbackViewedOrg.name,
+        bio: fallbackViewedOrg.bio,
+        phoneNumber: fallbackViewedOrg.phoneNumber,
+        address: fallbackViewedOrg.address,
+        location: fallbackViewedOrg.location,
+        bannerImageUrl: fallbackViewedOrg.bannerImage,
+        isActive: true,
+      } as OrgDoc);
+
+    return orgDocToProfile(
+      baseOrg,
+      askingListings.map(listingToAskingItem),
+      offeringListings.map(listingToOfferingItem)
+    );
+  }, [orgDoc, askingListings, offeringListings, viewedOrgId]);
 
   useEffect(() => {
     const prefillItem = searchParams.get("prefillItem");
@@ -116,10 +190,7 @@ export default function MemberOrgOfferingsPage() {
     const qty = Number.parseInt(prefillQtyRaw, 10);
     if (!Number.isFinite(qty) || qty <= 0) return;
 
-    const matchedItem = viewedOrg.offeringItems.find(
-      (item) => item.id === prefillItem
-    );
-
+    const matchedItem = viewedOrg.offeringItems.find((item) => item.id === prefillItem);
     if (!matchedItem) return;
 
     setRequestedQuantities((prev) => {
@@ -134,33 +205,88 @@ export default function MemberOrgOfferingsPage() {
         [prefillItem]: safeQty,
       };
     });
-  }, [searchParams]);
+  }, [searchParams, viewedOrg.offeringItems]);
 
-  const handleOpenMessageThread = () => {
-    const threadId = openConversationThread({
-      orgLabel: viewedOrg.name,
-      memberOrgLabel: "Neighbouring organisation",
-      createdBy: "member_org",
+  const handleOpenMessageThread = async () => {
+    const threadId = await openOrCreateThread({
+      currentOrgId: DEMO_MEMBER_ORG.id,
+      currentOrgName: DEMO_MEMBER_ORG.name,
+      otherOrgId: viewedOrg.id,
+      otherOrgName: viewedOrg.name,
       subject: "Conversation",
     });
 
     router.push(`/messages/member-org?thread=${threadId}`);
   };
 
-  const handleSubmitRequest = () => {
-    if (selectedItems.length === 0) return;
+  const handleSubmitRequest = async () => {
+    if (selectedItems.length === 0 || submitting) return;
 
-    const threadId = appendRequestMessage({
-      orgLabel: viewedOrg.name,
-      memberOrgLabel: "Neighbouring organisation",
-      createdBy: "member_org",
-      requestLines: selectedItems.map(({ item, quantity }) => ({
-        itemName: item.name,
-        quantity,
-      })),
-    });
+    setSubmitting(true);
 
-    router.push(`/messages/member-org?thread=${threadId}`);
+    try {
+      const expiresAtIso = new Date(
+        Date.now() + 48 * 60 * 60 * 1000
+      ).toISOString();
+
+      const requestId = await createRequest({
+        fromOrgId: DEMO_MEMBER_ORG.id,
+        fromOrgNameSnapshot: DEMO_MEMBER_ORG.name,
+        toOrgId: viewedOrg.id,
+        toOrgNameSnapshot: viewedOrg.name,
+        expiresAt: expiresAtIso,
+        lines: selectedItems.map(({ item, quantity }) => ({
+          listingId: item.id,
+          itemKey: normalizeItemKey(item.name),
+          nameSnapshot: item.name,
+          categorySnapshot: item.category,
+          imageUrlSnapshot: item.image || "",
+          expirationSnapshot: item.expiration,
+          urgencySnapshot: undefined,
+          quantityRequested: quantity,
+        })),
+      });
+
+      const threadId = await openOrCreateThread({
+        currentOrgId: DEMO_MEMBER_ORG.id,
+        currentOrgName: DEMO_MEMBER_ORG.name,
+        otherOrgId: viewedOrg.id,
+        otherOrgName: viewedOrg.name,
+        subject: "Conversation",
+      });
+
+      await appendRequestMessage({
+        threadId,
+        senderRole: "member_org",
+        senderOrgId: DEMO_MEMBER_ORG.id,
+        senderOrgName: DEMO_MEMBER_ORG.name,
+        requestId,
+        text: `${DEMO_MEMBER_ORG.name} sent a request.`,
+        expiresAt: expiresAtIso,
+        requestLines: selectedItems.map(({ item, quantity }) => ({
+          itemName: item.name,
+          quantity,
+        })),
+      });
+
+      await sendSystemMessage({
+        threadId,
+        senderOrgId: viewedOrg.id,
+        senderOrgName: viewedOrg.name,
+        requestId,
+        text: "Automatic reply: This is only a request and nothing has been confirmed yet. You will receive another message if it is accepted or cancelled.",
+      });
+
+router.push(`/messages/member-org?thread=${threadId}`);
+
+      setRequestedQuantities({});
+      router.push(`/messages/member-org?thread=${threadId}`);
+    } catch (error) {
+      console.error("Failed to submit request:", error);
+      window.alert("Could not submit this request.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleQuantityChange = (itemId: string, next: number) => {
@@ -198,13 +324,11 @@ export default function MemberOrgOfferingsPage() {
     }
 
     if (offeringCategoryFilter.length > 0) {
-      next = next.filter((item) =>
-        offeringCategoryFilter.includes(item.category)
-      );
+      next = next.filter((item) => offeringCategoryFilter.includes(item.category));
     }
 
     return next;
-  }, [offeringSearch, offeringCategoryFilter]);
+  }, [viewedOrg.offeringItems, offeringSearch, offeringCategoryFilter]);
 
   const filteredWishlist = useMemo(() => {
     const urgencyRank: Record<ItemUrgency, number> = {
@@ -236,15 +360,16 @@ export default function MemberOrgOfferingsPage() {
     }
 
     if (wishlistCategoryFilter.length > 0) {
-      next = next.filter((item) =>
-        wishlistCategoryFilter.includes(item.category)
-      );
+      next = next.filter((item) => wishlistCategoryFilter.includes(item.category));
     }
 
-    return next.sort(
-      (a, b) => urgencyRank[a.urgency] - urgencyRank[b.urgency]
-    );
-  }, [wishlistSearch, wishlistUrgencyFilter, wishlistCategoryFilter]);
+    return next.sort((a, b) => urgencyRank[a.urgency] - urgencyRank[b.urgency]);
+  }, [
+    viewedOrg.askingItems,
+    wishlistSearch,
+    wishlistUrgencyFilter,
+    wishlistCategoryFilter,
+  ]);
 
   const selectedItems = useMemo(() => {
     return viewedOrg.offeringItems
@@ -253,7 +378,7 @@ export default function MemberOrgOfferingsPage() {
         quantity: requestedQuantities[item.id] ?? 0,
       }))
       .filter((entry) => entry.quantity > 0);
-  }, [requestedQuantities]);
+  }, [viewedOrg.offeringItems, requestedQuantities]);
 
   return (
     <Box className="org-page-bg" sx={{ py: { xs: 0, md: 2.5 } }}>
@@ -295,28 +420,29 @@ export default function MemberOrgOfferingsPage() {
                 Member organisation profile
               </Typography>
             </Box>
-          <Button
-            startIcon={<ChatBubbleOutlineRoundedIcon />}
-            onClick={handleOpenMessageThread}
-            sx={{
-              borderRadius: 999,
-              px: 2.2,
-              py: 1.1,
-              bgcolor: "var(--accent)",
-              color: "white",
-              fontWeight: 800,
-              textTransform: "none",
-              "& .MuiButton-startIcon": {
+
+            <Button
+              startIcon={<ChatBubbleOutlineRoundedIcon />}
+              onClick={handleOpenMessageThread}
+              sx={{
+                borderRadius: 999,
+                px: 2.2,
+                py: 1.1,
+                bgcolor: "var(--accent)",
                 color: "white",
-              },
-              "&:hover": {
-                bgcolor: "var(--accent-strong)",
-                color: "white",
-              },
-            }}
-          >
-            Message
-          </Button>
+                fontWeight: 800,
+                textTransform: "none",
+                "& .MuiButton-startIcon": {
+                  color: "white",
+                },
+                "&:hover": {
+                  bgcolor: "var(--accent-strong)",
+                  color: "white",
+                },
+              }}
+            >
+              Message
+            </Button>
           </Box>
 
           <Paper
@@ -373,7 +499,10 @@ export default function MemberOrgOfferingsPage() {
                     maxWidth: 980,
                   }}
                 >
-                  {viewedOrg.id} has an over-abundance of these items, and is ready to share them with other organisation members. Use the quantity controls to choose what your organisation would like to request, then review the request list before submitting it.
+                  {viewedOrg.id} has an over-abundance of these items, and is ready to
+                  share them with other organisation members. Use the quantity controls
+                  to choose what your organisation would like to request, then review
+                  the request list before submitting it.
                 </Typography>
 
                 <InventoryBrowseControls
@@ -435,7 +564,9 @@ export default function MemberOrgOfferingsPage() {
                     maxWidth: 980,
                   }}
                 >
-                  These items are currently in need at {viewedOrg.id}. This section is read-only here, so your organisation can quickly see what they are looking for right now.
+                  These items are currently in need at {viewedOrg.id}. This section is
+                  read-only here, so your organisation can quickly see what they are
+                  looking for right now.
                 </Typography>
 
                 <InventoryBrowseControls
@@ -462,11 +593,12 @@ export default function MemberOrgOfferingsPage() {
               </Paper>
             </Stack>
 
-          <RequestListPanel
-            orgName={viewedOrg.name}
-            items={selectedItems}
-            onSubmit={handleSubmitRequest}
-          />
+            <RequestListPanel
+              orgName={viewedOrg.name}
+              items={selectedItems}
+              onSubmit={handleSubmitRequest}
+              submitting={submitting}
+            />
           </Box>
         </Stack>
       </Container>
