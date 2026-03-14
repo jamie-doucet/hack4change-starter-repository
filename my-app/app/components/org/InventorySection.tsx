@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   Checkbox,
-  CircularProgress,
   Collapse,
   Divider,
   FormControl,
@@ -13,6 +12,7 @@ import {
   InputAdornment,
   InputLabel,
   ListItemText,
+  Menu,
   MenuItem,
   OutlinedInput,
   Select,
@@ -36,12 +36,15 @@ import type {
 
 type Props = {
   kind: InventoryKind;
+  title: string;
+  description: string;
   items: InventoryItem[];
-  onAdd: () => void;
+  onAddManual: () => void;
+  onAddCamera: () => void;
   onEdit: (item: InventoryItem) => void;
+  onDeleteManual: () => void;
   onDeleteMany: (ids: string[]) => void;
-  onOpenCameraScan: () => void;
-  scanLoading: boolean;
+  onDeleteCamera: () => void;
 };
 
 const categoryOptions: ItemCategory[] = [
@@ -77,12 +80,15 @@ function previewMeta(kind: InventoryKind, item: InventoryItem) {
 
 export default function InventorySection({
   kind,
+  title,
+  description,
   items,
-  onAdd,
+  onAddManual,
+  onAddCamera,
   onEdit,
+  onDeleteManual,
   onDeleteMany,
-  onOpenCameraScan,
-  scanLoading,
+  onDeleteCamera,
 }: Props) {
   const [expanded, setExpanded] = useState(true);
   const [search, setSearch] = useState("");
@@ -90,6 +96,12 @@ export default function InventorySection({
   const [categoryFilter, setCategoryFilter] = useState<ItemCategory[]>([]);
   const [deleteMode, setDeleteMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const [addAnchorEl, setAddAnchorEl] = useState<null | HTMLElement>(null);
+  const [deleteAnchorEl, setDeleteAnchorEl] = useState<null | HTMLElement>(null);
+
+  const useAddMenu = kind === "offering";
+  const useDeleteMenu = kind === "offering";
 
   const previewItems = useMemo(() => {
     const next = [...items];
@@ -146,13 +158,7 @@ export default function InventorySection({
     return next;
   }, [items, search, urgencyFilter, categoryFilter, kind]);
 
-  const title = kind === "asking" ? "Asking" : "Offering";
-  const eyebrow = kind === "asking" ? "Current needs" : "Current offers";
-
-  const handleToggleDeleteMode = () => {
-    setDeleteMode((prev) => !prev);
-    setSelectedIds([]);
-  };
+  const showImages = kind === "offering";
 
   const handleCheck = (id: string, checked: boolean) => {
     setSelectedIds((prev) =>
@@ -178,6 +184,26 @@ export default function InventorySection({
     }
   };
 
+  const openAddMenu = (event: React.MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+    setAddAnchorEl(event.currentTarget);
+  };
+
+  const openDeleteMenu = (event: React.MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+
+    if (!expanded) {
+      setExpanded(true);
+    }
+
+    setDeleteAnchorEl(event.currentTarget);
+  };
+
+  const closeMenus = () => {
+    setAddAnchorEl(null);
+    setDeleteAnchorEl(null);
+  };
+
   return (
     <Box
       sx={{
@@ -200,100 +226,84 @@ export default function InventorySection({
         }}
       >
         <Box sx={{ width: "100%" }}>
-          <Typography
-            variant="overline"
-            sx={{
-              color: "var(--accent-strong)",
-              fontWeight: 800,
-              letterSpacing: "0.14em",
-            }}
-          >
-            {eyebrow}
-          </Typography>
-
           <Stack
             direction="row"
             justifyContent="space-between"
             alignItems="center"
             spacing={1.5}
-            sx={{ mt: 0.25, pr: 0.5 }}
+            sx={{ pr: 0.5 }}
           >
             <Typography
-              variant="h4"
+              variant="h3"
               sx={{
                 fontWeight: 800,
-                letterSpacing: "-0.04em",
-                lineHeight: 0.98,
+                letterSpacing: "-0.05em",
+                lineHeight: 0.95,
+                fontSize: { xs: "2rem", md: "2.6rem" },
               }}
             >
               {title}
             </Typography>
 
             <Stack direction="row" spacing={{ xs: 0.75, sm: 1 }} alignItems="center">
-              <IconButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAdd();
-                }}
-                sx={{
-                  bgcolor: "var(--accent)",
-                  color: "#08352d",
-                  borderRadius: 999,
-                  width: { xs: 42, sm: 46 },
-                  height: { xs: 42, sm: 46 },
-                  "&:hover": {
-                    bgcolor: "var(--accent-strong)",
-                    color: "white",
-                  },
-                }}
-              >
-                <AddIcon />
-              </IconButton>
+            <IconButton
+              onClick={(e) => {
+                e.stopPropagation();
 
-              <IconButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenCameraScan();
-                }}
-                disabled={scanLoading}
-                sx={{
-                  bgcolor: "white",
-                  color: "var(--accent-strong)",
-                  borderRadius: 999,
-                  width: { xs: 42, sm: 46 },
-                  height: { xs: 42, sm: 46 },
-                  border: "1px solid rgba(40, 199, 167, 0.24)",
-                  "&:hover": {
-                    bgcolor: "var(--accent-soft)",
-                  },
-                  "&.Mui-disabled": {
-                    bgcolor: "white",
-                  },
-                }}
-              >
-                {scanLoading ? (
-                  <CircularProgress size={20} sx={{ color: "var(--accent-strong)" }} />
-                ) : (
-                  <PhotoCameraRoundedIcon />
-                )}
-              </IconButton>
+                if (useAddMenu) {
+                  openAddMenu(e);
+                } else {
+                  onAddManual();
+                }
+              }}
+              sx={{
+                bgcolor: "var(--accent)",
+                color: "#08352d",
+                borderRadius: 999,
+                width: { xs: 42, sm: 46 },
+                height: { xs: 42, sm: 46 },
+                "&:hover": {
+                  bgcolor: "var(--accent-strong)",
+                  color: "white",
+                },
+              }}
+            >
+              <AddIcon />
+            </IconButton>
 
-              <IconButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleToggleDeleteMode();
-                }}
-                sx={{
-                  bgcolor: deleteMode ? "#fff1f1" : "white",
-                  color: deleteMode ? "#d32f2f" : "var(--foreground)",
-                  borderRadius: 999,
-                  width: { xs: 42, sm: 46 },
-                  height: { xs: 42, sm: 46 },
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <DeleteOutlineIcon />
-              </IconButton>
+            <IconButton
+              onClick={(e) => {
+                e.stopPropagation();
+
+                if (!expanded) {
+                  setExpanded(true);
+                }
+
+                if (deleteMode) {
+                  setDeleteMode(false);
+                  setSelectedIds([]);
+                  closeMenus();
+                  return;
+                }
+
+                if (useDeleteMenu) {
+                  openDeleteMenu(e);
+                } else {
+                  setDeleteMode(true);
+                  onDeleteManual();
+                }
+              }}
+              sx={{
+                bgcolor: deleteMode ? "#fff1f1" : "white",
+                color: deleteMode ? "#d32f2f" : "var(--foreground)",
+                borderRadius: 999,
+                width: { xs: 42, sm: 46 },
+                height: { xs: 42, sm: 46 },
+                border: "1px solid var(--border)",
+              }}
+            >
+              <DeleteOutlineIcon />
+            </IconButton>
 
               <IconButton
                 onClick={(e) => {
@@ -316,46 +326,46 @@ export default function InventorySection({
             </Stack>
           </Stack>
 
-          {!expanded && (
-            <>
-              <Typography
-                sx={{
-                  mt: 1,
-                  color: "var(--muted)",
-                  fontSize: "0.96rem",
-                }}
-              >
-                {kind === "asking"
-                  ? "A quick preview of the most urgent requested items."
-                  : "A quick preview of currently available items."}
-              </Typography>
+          <Typography
+            sx={{
+              mt: 1.1,
+              color: "var(--muted)",
+              fontSize: "0.98rem",
+              lineHeight: 1.6,
+              maxWidth: 980,
+            }}
+          >
+            {description}
+          </Typography>
 
-              <Box
-                sx={{
-                  mt: 1.5,
-                  display: "grid",
-                  gap: 1.25,
-                  gridTemplateColumns: {
-                    xs: "1fr",
-                    md: "repeat(3, minmax(0, 1fr))",
-                  },
-                  pr: { md: 1 },
-                }}
-              >
-                {previewItems.length > 0 ? (
-                  previewItems.map((item) => (
-                    <Box
-                      key={item.id}
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1.25,
-                        p: 1.25,
-                        borderRadius: "20px",
-                        bgcolor: "white",
-                        border: "1px solid var(--border)",
-                      }}
-                    >
+          {!expanded && (
+            <Box
+              sx={{
+                mt: 1.5,
+                display: "grid",
+                gap: 1.25,
+                gridTemplateColumns: {
+                  xs: "1fr",
+                  md: "repeat(3, minmax(0, 1fr))",
+                },
+                pr: { md: 1 },
+              }}
+            >
+              {previewItems.length > 0 ? (
+                previewItems.map((item) => (
+                  <Box
+                    key={item.id}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: showImages ? 1.25 : 0,
+                      p: 1.25,
+                      borderRadius: "20px",
+                      bgcolor: "white",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {showImages && (
                       <Box
                         component="img"
                         src={item.image}
@@ -370,53 +380,132 @@ export default function InventorySection({
                           border: "1px solid rgba(40, 199, 167, 0.18)",
                         }}
                       />
+                    )}
 
-                      <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography
-                          sx={{
-                            fontWeight: 800,
-                            fontSize: "0.96rem",
-                            lineHeight: 1.1,
-                            letterSpacing: "-0.02em",
-                          }}
-                          noWrap
-                        >
-                          {item.name}
-                        </Typography>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography
+                        sx={{
+                          fontWeight: 800,
+                          fontSize: "0.96rem",
+                          lineHeight: 1.1,
+                          letterSpacing: "-0.02em",
+                        }}
+                        noWrap
+                      >
+                        {item.name}
+                      </Typography>
 
-                        <Typography
-                          sx={{
-                            mt: 0.35,
-                            color: "var(--muted)",
-                            fontSize: "0.86rem",
-                            textTransform: "capitalize",
-                          }}
-                          noWrap
-                        >
-                          {previewMeta(kind, item)}
-                        </Typography>
-                      </Box>
+                      <Typography
+                        sx={{
+                          mt: 0.35,
+                          color: "var(--muted)",
+                          fontSize: "0.86rem",
+                          textTransform: "capitalize",
+                        }}
+                        noWrap
+                      >
+                        {previewMeta(kind, item)}
+                      </Typography>
                     </Box>
-                  ))
-                ) : (
-                  <Box
-                    sx={{
-                      p: 1.5,
-                      borderRadius: "20px",
-                      bgcolor: "white",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    <Typography sx={{ color: "var(--muted)" }}>
-                      No items yet.
-                    </Typography>
                   </Box>
-                )}
-              </Box>
-            </>
+                ))
+              ) : (
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderRadius: "20px",
+                    bgcolor: "white",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <Typography sx={{ color: "var(--muted)" }}>
+                    No items yet.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
           )}
         </Box>
       </Box>
+
+      <Menu
+        anchorEl={addAnchorEl}
+        open={Boolean(addAnchorEl)}
+        onClose={closeMenus}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        transformOrigin={{ vertical: "bottom", horizontal: "center" }}
+        slotProps={{
+          paper: {
+            sx: {
+              mt: -1,
+              borderRadius: "18px",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
+            },
+          },
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            closeMenus();
+            onAddManual();
+          }}
+        >
+          Add manually
+        </MenuItem>
+
+        {kind === "offering" && (
+          <MenuItem
+            onClick={() => {
+              closeMenus();
+              onAddCamera();
+            }}
+          >
+            <PhotoCameraRoundedIcon sx={{ mr: 1, fontSize: 18 }} />
+            Add with camera
+          </MenuItem>
+        )}
+      </Menu>
+
+      <Menu
+        anchorEl={deleteAnchorEl}
+        open={Boolean(deleteAnchorEl)}
+        onClose={closeMenus}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        transformOrigin={{ vertical: "bottom", horizontal: "center" }}
+        slotProps={{
+          paper: {
+            sx: {
+              mt: -1,
+              borderRadius: "18px",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
+            },
+          },
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            closeMenus();
+            setDeleteMode(true);
+            onDeleteManual();
+          }}
+        >
+          Delete manually
+        </MenuItem>
+
+        {kind === "offering" && (
+          <MenuItem
+            onClick={() => {
+              closeMenus();
+              onDeleteCamera();
+            }}
+          >
+            <PhotoCameraRoundedIcon sx={{ mr: 1, fontSize: 18 }} />
+            Delete with camera
+          </MenuItem>
+        )}
+      </Menu>
 
       <Collapse in={expanded} timeout="auto" unmountOnExit>
         <Box sx={{ p: 0 }}>
@@ -555,7 +644,7 @@ export default function InventorySection({
                 <TextField
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder={`Search ${kind} items`}
+                  placeholder={`Search ${kind === "asking" ? "wishlist" : "offering"} items`}
                   fullWidth
                   sx={{
                     maxWidth: { xl: 380 },

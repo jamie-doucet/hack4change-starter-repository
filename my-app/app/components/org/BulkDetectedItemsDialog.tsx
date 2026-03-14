@@ -11,7 +11,10 @@ import {
   IconButton,
   Stack,
   Typography,
+  Chip,
+  TextField,
 } from "@mui/material";
+
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import type { InventoryKind, ItemCategory, ItemUrgency } from "./types";
@@ -20,8 +23,11 @@ import { defaultImageForCategory } from "./askingItemFormConfig";
 
 export { defaultImageForCategory } from "./askingItemFormConfig";
 
+export type InventoryDraftAction = "add" | "delete";
+
 export type InventoryDraftItem = {
   tempId: string;
+  sourceId?: string;
   name: string;
   quantity: string;
   category: ItemCategory;
@@ -33,6 +39,7 @@ export type InventoryDraftItem = {
 type Props = {
   open: boolean;
   kind: InventoryKind;
+  action: InventoryDraftAction;
   items: InventoryDraftItem[];
   onClose: () => void;
   onChange: (items: InventoryDraftItem[]) => void;
@@ -75,9 +82,24 @@ export function makeScannedDraftFromDetection(
   };
 }
 
+function formatExpiration(value?: string) {
+  if (!value) return "";
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+
+  const [, year, month, day] = match;
+  const monthNames = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+
+  return `${monthNames[Number(month) - 1] ?? month} ${Number(day)}, ${year}`;
+}
+
 export default function BulkDetectedItemsDialog({
   open,
   kind,
+  action,
   items,
   onClose,
   onChange,
@@ -144,30 +166,34 @@ export default function BulkDetectedItemsDialog({
                 lineHeight: 1,
               }}
             >
-              Review detected {kind} items
+              {action === "add" ? "Review detected items" : "Review items to delete"}
             </Typography>
 
             <Typography sx={{ mt: 1, color: "var(--muted)" }}>
-              Edit names, quantities, images, categories, or remove anything before saving.
+              {action === "add"
+                ? "Edit names, quantities, images, categories, or remove anything before saving."
+                : "These matches come from your current inventory. The quantity shown is what was detected in the photo."}
             </Typography>
           </Box>
 
-          <Button
-            onClick={addBlankItem}
-            startIcon={<AddIcon />}
-            sx={{
-              alignSelf: { xs: "stretch", sm: "auto" },
-              borderRadius: 999,
-              px: 2,
-              bgcolor: "white",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
-              textTransform: "none",
-              fontWeight: 700,
-            }}
-          >
-            Add row
-          </Button>
+          {action === "add" && (
+            <Button
+              onClick={addBlankItem}
+              startIcon={<AddIcon />}
+              sx={{
+                alignSelf: { xs: "stretch", sm: "auto" },
+                borderRadius: 999,
+                px: 2,
+                bgcolor: "white",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+                textTransform: "none",
+                fontWeight: 700,
+              }}
+            >
+              Add row
+            </Button>
+          )}
         </Stack>
       </DialogTitle>
 
@@ -208,39 +234,145 @@ export default function BulkDetectedItemsDialog({
                 </IconButton>
               </Stack>
 
-              <InventoryItemFields
-                kind={kind}
-                name={item.name}
-                quantity={item.quantity}
-                category={item.category}
-                urgency={item.urgency}
-                expiration={item.expiration}
-                image={item.image}
-                showImageField
-                compactQuantity
-                onNameChange={(value) => updateItem(item.tempId, { name: value })}
-                onQuantityChange={(value) =>
-                  updateItem(item.tempId, { quantity: value })
-                }
-                onImageChange={(value) =>
-                  updateItem(item.tempId, { image: value })
-                }
-                onCategoryChange={(value) =>
-                  updateItem(item.tempId, {
-                    category: value,
-                    image:
-                      item.image.startsWith("https://placehold.co/120x120?text=")
-                        ? defaultImageForCategory(value)
-                        : item.image,
-                  })
-                }
-                onUrgencyChange={(value) =>
-                  updateItem(item.tempId, { urgency: value })
-                }
-                onExpirationChange={(value) =>
-                  updateItem(item.tempId, { expiration: value })
-                }
-              />
+              {action === "delete" ? (
+                <Stack spacing={1.5}>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    {kind === "offering" && (
+                      <Box
+                        component="img"
+                        src={item.image}
+                        alt={item.name}
+                        sx={{
+                          width: 88,
+                          height: 88,
+                          borderRadius: "18px",
+                          objectFit: "cover",
+                          border: "1px solid var(--border)",
+                          bgcolor: "var(--accent-soft)",
+                        }}
+                      />
+                    )}
+
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography
+                        sx={{
+                          fontWeight: 800,
+                          fontSize: "1.05rem",
+                          letterSpacing: "-0.02em",
+                        }}
+                      >
+                        {item.name}
+                      </Typography>
+
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        flexWrap="wrap"
+                        useFlexGap
+                        sx={{ mt: 1 }}
+                      >
+                        <Chip
+                          label={item.category}
+                          sx={{
+                            borderRadius: 999,
+                            bgcolor: "white",
+                            border: "1px solid var(--border)",
+                            textTransform: "capitalize",
+                            fontWeight: 700,
+                          }}
+                        />
+
+                        {item.expiration && (
+                          <Chip
+                            label={`Expires ${formatExpiration(item.expiration)}`}
+                            sx={{
+                              borderRadius: 999,
+                              bgcolor: "#fff8e8",
+                              color: "#8a5a00",
+                              border: "1px solid rgba(255, 193, 7, 0.24)",
+                              fontWeight: 700,
+                            }}
+                          />
+                        )}
+                      </Stack>
+                    </Box>
+                  </Stack>
+
+                  <Box sx={{ width: "100%", maxWidth: 220 }}>
+                    <TextField
+                      label="Quantity to remove"
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) =>
+                        updateItem(item.tempId, {
+                          quantity: e.target.value,
+                        })
+                      }
+                      fullWidth
+                      inputProps={{
+                        min: 1,
+                        step: 1,
+                      }}
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          borderRadius: "16px",
+                          bgcolor: "white",
+                          "& fieldset": {
+                            borderColor: "var(--border)",
+                          },
+                          "&:hover fieldset": {
+                            borderColor: "rgba(40, 199, 167, 0.4)",
+                          },
+                          "&.Mui-focused fieldset": {
+                            borderColor: "var(--accent-strong)",
+                            borderWidth: "2px",
+                          },
+                        },
+                        "& .MuiOutlinedInput-input": {
+                          paddingTop: "16px",
+                          paddingBottom: "16px",
+                          paddingLeft: "14px",
+                          paddingRight: "14px",
+                        },
+                      }}
+                    />
+                  </Box>
+                </Stack>
+              ) : (
+                <InventoryItemFields
+                  kind={kind}
+                  name={item.name}
+                  quantity={item.quantity}
+                  category={item.category}
+                  urgency={item.urgency}
+                  expiration={item.expiration}
+                  image={item.image}
+                  showImageField
+                  compactQuantity
+                  onNameChange={(value) => updateItem(item.tempId, { name: value })}
+                  onQuantityChange={(value) =>
+                    updateItem(item.tempId, { quantity: value })
+                  }
+                  onImageChange={(value) =>
+                    updateItem(item.tempId, { image: value })
+                  }
+                  onCategoryChange={(value) =>
+                    updateItem(item.tempId, {
+                      category: value,
+                      image:
+                        item.image.startsWith("https://placehold.co/120x120?text=")
+                          ? defaultImageForCategory(value)
+                          : item.image,
+                    })
+                  }
+                  onUrgencyChange={(value) =>
+                    updateItem(item.tempId, { urgency: value })
+                  }
+                  onExpirationChange={(value) =>
+                    updateItem(item.tempId, { expiration: value })
+                  }
+                />
+              )}
             </Box>
           ))}
 
@@ -254,7 +386,7 @@ export default function BulkDetectedItemsDialog({
               }}
             >
               <Typography sx={{ color: "var(--muted)" }}>
-                No detected items yet.
+                No items found.
               </Typography>
             </Box>
           )}
@@ -276,20 +408,22 @@ export default function BulkDetectedItemsDialog({
         </Button>
 
         <Stack direction="row" spacing={1}>
-          <Button
-            onClick={addBlankItem}
-            sx={{
-              borderRadius: 999,
-              px: 2,
-              bgcolor: "white",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
-              textTransform: "none",
-              fontWeight: 700,
-            }}
-          >
-            Add item
-          </Button>
+          {action === "add" && (
+            <Button
+              onClick={addBlankItem}
+              sx={{
+                borderRadius: 999,
+                px: 2,
+                bgcolor: "white",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+                textTransform: "none",
+                fontWeight: 700,
+              }}
+            >
+              Add item
+            </Button>
+          )}
 
           <Button
             variant="contained"
@@ -297,18 +431,18 @@ export default function BulkDetectedItemsDialog({
             sx={{
               borderRadius: 999,
               px: 2.4,
-              bgcolor: "var(--accent)",
-              color: "#08352d",
+              bgcolor: action === "delete" ? "#d32f2f" : "var(--accent)",
+              color: "white",
               textTransform: "none",
               fontWeight: 800,
               boxShadow: "none",
               "&:hover": {
-                bgcolor: "var(--accent-strong)",
+                bgcolor: action === "delete" ? "#b71c1c" : "var(--accent-strong)",
                 color: "white",
               },
             }}
           >
-            Save detected items
+            {action === "add" ? "Save detected items" : "Delete matched items"}
           </Button>
         </Stack>
       </DialogActions>

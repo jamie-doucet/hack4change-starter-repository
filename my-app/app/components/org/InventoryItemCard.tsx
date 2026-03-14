@@ -34,21 +34,36 @@ function urgencyColor(
 }
 
 function urgencyLabel(urgency: ItemUrgency) {
-  if (urgency === "high") return "Needed now";
-  if (urgency === "medium") return "Needed soon";
-  return "Low urgency";
+  return urgency.charAt(0).toUpperCase() + urgency.slice(1);
 }
 
 function formatExpiration(value?: string) {
   if (!value) return "";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
 
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+
+  const [, year, month, day] = match;
+
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+
+  const monthIndex = Number(month) - 1;
+  const safeMonth = monthNames[monthIndex] ?? month;
+
+  return `${safeMonth} ${Number(day)}, ${year}`;
 }
 
 export default function InventoryItemCard({
@@ -59,12 +74,14 @@ export default function InventoryItemCard({
   onCheck,
   onClick,
 }: Props) {
+  const showImage = kind === "offering";
+
   const content = (
     <Box
       sx={{
         display: "flex",
         alignItems: "stretch",
-        gap: 2,
+        gap: showImage ? 2 : 1.5,
         p: 2,
       }}
     >
@@ -84,20 +101,22 @@ export default function InventoryItemCard({
         </Box>
       )}
 
-      <Box
-        component="img"
-        src={item.image}
-        alt={item.name}
-        sx={{
-          width: 96,
-          minWidth: 96,
-          height: 96,
-          borderRadius: "20px",
-          objectFit: "cover",
-          bgcolor: "var(--accent-soft)",
-          border: "1px solid rgba(49, 237, 199, 0.22)",
-        }}
-      />
+      {showImage && (
+        <Box
+          component="img"
+          src={item.image}
+          alt={item.name}
+          sx={{
+            width: 96,
+            minWidth: 96,
+            height: 96,
+            borderRadius: "20px",
+            objectFit: "cover",
+            bgcolor: "var(--accent-soft)",
+            border: "1px solid rgba(49, 237, 199, 0.22)",
+          }}
+        />
+      )}
 
       <Stack spacing={1.2} sx={{ minWidth: 0, flex: 1, justifyContent: "center" }}>
         <Typography

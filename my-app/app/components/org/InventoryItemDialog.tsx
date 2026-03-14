@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState, forwardRef } from "react";
+import { useEffect, useRef, useState, forwardRef } from "react";
 import {
   AppBar,
   Box,
   Button,
   Dialog,
+  IconButton,
+  InputBase,
   Slide,
   Stack,
   Toolbar,
   Typography,
 } from "@mui/material";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import type { TransitionProps } from "@mui/material/transitions";
 import type {
   AskingItem,
@@ -34,6 +37,7 @@ type Props = {
   open: boolean;
   mode: "add" | "edit";
   kind: InventoryKind;
+  orgName: string;
   item: InventoryItem | null;
   onClose: () => void;
   onSave: (item: InventoryItem) => void;
@@ -53,6 +57,7 @@ export default function InventoryItemDialog({
   open,
   mode,
   kind,
+  orgName,
   item,
   onClose,
   onSave,
@@ -63,6 +68,9 @@ export default function InventoryItemDialog({
   const [expiration, setExpiration] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [image, setImage] = useState(defaultImageForCategory("food"));
+  const [editingTitle, setEditingTitle] = useState(false);
+
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (item) {
@@ -86,7 +94,16 @@ export default function InventoryItemDialog({
       setQuantity("1");
       setImage(defaultImageForCategory("food"));
     }
+
+    setEditingTitle(false);
   }, [item, open, kind]);
+
+  useEffect(() => {
+    if (editingTitle) {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }
+  }, [editingTitle]);
 
   const handleCategoryChange = (nextCategory: ItemCategory) => {
     setCategory(nextCategory);
@@ -125,6 +142,15 @@ export default function InventoryItemDialog({
     onSave(next);
   };
 
+  const dialogEyebrow =
+    kind === "asking"
+      ? `${orgName} is asking for`
+      : `${orgName} is offering`;
+
+  const titleText =
+    name.trim() ||
+    (kind === "asking" ? "Untitled request item" : "Untitled offering item");
+
   return (
     <Dialog
       fullScreen
@@ -162,13 +188,7 @@ export default function InventoryItemDialog({
           </Button>
 
           <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: "-0.03em" }}>
-            {mode === "add"
-              ? kind === "asking"
-                ? "Add asking item"
-                : "Add offering item"
-              : kind === "asking"
-                ? "Edit asking item"
-                : "Edit offering item"}
+            {mode === "add" ? "Add item" : "Edit item"}
           </Typography>
 
           <Button
@@ -209,17 +229,67 @@ export default function InventoryItemDialog({
                   letterSpacing: "0.14em",
                 }}
               >
-                {kind === "asking" ? "Asking inventory" : "Offering inventory"}
+                {dialogEyebrow}
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: "-0.04em" }}>
-                {mode === "add"
-                  ? kind === "asking"
-                    ? "Create a new request item"
-                    : "Create a new offering item"
-                  : kind === "asking"
-                    ? "Update request item"
-                    : "Update offering item"}
-              </Typography>
+
+              {mode === "edit" ? (
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{ mt: 0.25 }}
+                >
+                  {editingTitle ? (
+                    <InputBase
+                      inputRef={titleInputRef}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      onBlur={() => setEditingTitle(false)}
+                      sx={{
+                        fontSize: "2.125rem",
+                        fontWeight: 800,
+                        letterSpacing: "-0.04em",
+                        lineHeight: 1.05,
+                        color: "var(--foreground)",
+                        px: 0,
+                        py: 0,
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    />
+                  ) : (
+                    <Typography
+                      variant="h4"
+                      onClick={() => setEditingTitle(true)}
+                      sx={{
+                        fontWeight: 800,
+                        letterSpacing: "-0.04em",
+                        lineHeight: 1.05,
+                        cursor: "text",
+                      }}
+                    >
+                      {titleText}
+                    </Typography>
+                  )}
+
+                  <IconButton
+                    onClick={() => setEditingTitle(true)}
+                    sx={{
+                      border: "1px solid var(--border)",
+                      bgcolor: "white",
+                    }}
+                  >
+                    <EditOutlinedIcon />
+                  </IconButton>
+                </Stack>
+              ) : (
+                <Typography
+                  variant="h4"
+                  sx={{ fontWeight: 800, letterSpacing: "-0.04em" }}
+                >
+                  {kind === "asking" ? "Create a new request item" : "Create a new offering item"}
+                </Typography>
+              )}
             </Box>
 
             <InventoryItemFields
@@ -230,7 +300,8 @@ export default function InventoryItemDialog({
               urgency={urgency}
               expiration={expiration}
               image={image}
-              showImageField
+              showNameField={mode !== "edit"}
+              showImageField={kind === "offering"}
               onNameChange={setName}
               onQuantityChange={setQuantity}
               onImageChange={setImage}

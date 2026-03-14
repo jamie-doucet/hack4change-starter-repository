@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { Box, Container, Paper, Stack, Typography, Chip } from "@mui/material";
+import { useRef, useState } from "react";
+import { Box, Button, Container, Paper, Stack, Typography } from "@mui/material";
 import OrgProfileHeader from "@/app/components/org/OrgProfileHeader";
 import InventorySection from "@/app/components/org/InventorySection";
 import InventoryItemDialog from "@/app/components/org/InventoryItemDialog";
@@ -11,6 +11,7 @@ import BulkDetectedItemsDialog, {
   makeBlankScannedDraft,
   makeScannedDraftFromDetection,
 } from "@/app/components/org/BulkDetectedItemsDialog";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
 import type {
   AskingItem,
   InventoryItem,
@@ -23,10 +24,12 @@ const initialOrg: OrgProfile = {
   id: "humanity-project",
   name: "The Humanity Project",
   bio: "Helping the Moncton community with essentials, outreach support, and day-to-day resources for people who need them most.",
+  phoneNumber: "(506) 555-0187",
+  address: "123 Main Street, Moncton, NB E1C 1A1",
   location: "Moncton, NB",
   bannerImage:
     "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=1600&q=80",
-  avatarImage: "https://placehold.co/200x200?text=Org",
+  avatarImage: "",
   askingItems: [
     {
       id: "1",
@@ -34,7 +37,7 @@ const initialOrg: OrgProfile = {
       category: "clothing",
       urgency: "high",
       quantity: 12,
-      image: "https://placehold.co/120x120?text=Coat",
+      image: "",
     },
     {
       id: "2",
@@ -42,7 +45,7 @@ const initialOrg: OrgProfile = {
       category: "hygiene",
       urgency: "medium",
       quantity: 40,
-      image: "https://placehold.co/120x120?text=Brush",
+      image: "",
     },
   ],
   offeringItems: [
@@ -78,32 +81,12 @@ export default function OrgPage() {
 
   const [scanLoading, setScanLoading] = useState(false);
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
-  const [scanKind, setScanKind] = useState<InventoryKind>("asking");
+  const [scanKind, setScanKind] = useState<InventoryKind>("offering");
   const [scannedItems, setScannedItems] = useState<InventoryDraftItem[]>([]);
 
+  const [scanAction, setScanAction] = useState<"add" | "delete">("add");
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const totalItemTypes = useMemo(
-    () => org.askingItems.length + org.offeringItems.length,
-    [org.askingItems, org.offeringItems]
-  );
-
-  const totalUnits = useMemo(
-    () =>
-      [...org.askingItems, ...org.offeringItems].reduce(
-        (sum, item) => sum + item.quantity,
-        0
-      ),
-    [org.askingItems, org.offeringItems]
-  );
-
-  const askingHighPriority = useMemo(
-    () =>
-      org.askingItems
-        .filter((item) => item.urgency === "high")
-        .reduce((sum, item) => sum + item.quantity, 0),
-    [org.askingItems]
-  );
 
   const handleOpenAdd = (kind: InventoryKind) => {
     setDialogMode("add");
@@ -172,9 +155,13 @@ export default function OrgPage() {
     });
   };
 
-  const handleOpenCameraScan = (kind: InventoryKind) => {
-    if (scanLoading) return;
+  const handleOpenCameraScan = (
+    kind: InventoryKind,
+    action: "add" | "delete"
+  ) => {
+    if (scanLoading || kind !== "offering") return;
     setScanKind(kind);
+    setScanAction(action);
     fileInputRef.current?.click();
   };
 
@@ -190,31 +177,100 @@ export default function OrgPage() {
       const formData = new FormData();
       formData.append("image", file);
 
-      const response = await fetch("/api/vision-items", {
+      if (scanAction === "add") {
+        const response = await fetch("/api/vision-items", {
+          method: "POST",
+          body: formData,
+        });
+
+        const raw = await response.text();
+        let data: any;
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          console.error("add route raw response:", raw);
+          throw new Error(raw || "Add route did not return JSON.");
+        }
+
+        if (!response.ok) {
+          throw new Error(data?.error || "Failed to scan image.");
+        }
+
+        const detected = Array.isArray(data?.items) ? data.items : [];
+
+        const nextDrafts =
+          detected.length > 0
+            ? detected.map((item: { quantity: number; name: string }) =>
+                makeScannedDraftFromDetection(scanKind, item)
+              )
+            : [makeBlankScannedDraft(scanKind)];
+
+        setScannedItems(nextDrafts);
+        setScanDialogOpen(true);
+        return;
+      }
+
+      formData.append(
+        "items",
+        JSON.stringify(
+          org.offeringItems.map((item) => ({
+            id: item.id,
+            name: item.name,
+            category: item.category,
+            quantity: item.quantity,
+            expiration: item.expiration,
+          }))
+        )
+      );
+
+      const response = await fetch("/api/vision-delete-items", {
         method: "POST",
         body: formData,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || "Failed to scan image.");
+      const raw = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        console.error("delete route raw response:", raw);
+        throw new Error(raw || "Delete route did not return JSON.");
       }
 
-      const detected = Array.isArray(data?.items) ? data.items : [];
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to compare image.");
+      }
+
+      const matchedItems = Array.isArray(data?.matched_items)
+        ? data.matched_items
+        : [];
 
       const nextDrafts =
-        detected.length > 0
-          ? detected.map((item: { quantity: number; name: string }) =>
-              makeScannedDraftFromDetection(scanKind, item)
-            )
-          : [makeBlankScannedDraft(scanKind)];
+        matchedItems.length > 0
+          ? matchedItems
+              .map((match: { id: string; quantity_found: number }) => {
+                const source = org.offeringItems.find((item) => item.id === match.id);
+                if (!source) return null;
+
+                return {
+                  tempId: makeId(),
+                  sourceId: source.id,
+                  name: source.name,
+                  quantity: String(Math.max(1, match.quantity_found || 1)),
+                  category: source.category,
+                  urgency: "medium" as const,
+                  expiration: source.expiration ?? "",
+                  image: source.image,
+                };
+              })
+              .filter(Boolean) as InventoryDraftItem[]
+          : [];
 
       setScannedItems(nextDrafts);
       setScanDialogOpen(true);
     } catch (error) {
       console.error(error);
-      window.alert("Could not scan that image.");
+      window.alert("Could not process that image.");
     } finally {
       setScanLoading(false);
       if (fileInputRef.current) {
@@ -229,34 +285,54 @@ export default function OrgPage() {
   };
 
   const handleConfirmScannedItems = (items: InventoryDraftItem[]) => {
+    if (scanAction === "delete") {
+      const deleteMap = new Map<string, number>();
+
+      for (const item of items) {
+        if (!item.sourceId) continue;
+
+        const parsed = Number.parseInt(item.quantity, 10);
+        const quantityToRemove =
+          Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+
+        deleteMap.set(item.sourceId, quantityToRemove);
+      }
+
+      if (deleteMap.size === 0) {
+        handleCloseScanDialog();
+        return;
+      }
+
+      setOrg((prev) => ({
+        ...prev,
+        offeringItems: prev.offeringItems
+          .map((item) => {
+            const quantityToRemove = deleteMap.get(item.id);
+            if (!quantityToRemove) return item;
+
+            const remaining = item.quantity - quantityToRemove;
+
+            if (remaining <= 0) {
+              return null;
+            }
+
+            return {
+              ...item,
+              quantity: remaining,
+            };
+          })
+          .filter((item): item is OfferingItem => item !== null),
+      }));
+
+      handleCloseScanDialog();
+      return;
+    }
+
     const valid = items.filter((item) => item.name.trim());
 
     if (valid.length === 0) return;
 
     setOrg((prev) => {
-      if (scanKind === "asking") {
-        const finalized: AskingItem[] = valid.map((item) => {
-          const parsedQuantity = Number.parseInt(item.quantity, 10);
-
-          return {
-            id: makeId(),
-            name: item.name.trim(),
-            category: item.category,
-            urgency: item.urgency,
-            quantity:
-              Number.isFinite(parsedQuantity) && parsedQuantity > 0
-                ? parsedQuantity
-                : 1,
-            image: item.image || defaultImageForCategory(item.category),
-          };
-        });
-
-        return {
-          ...prev,
-          askingItems: [...finalized, ...prev.askingItems],
-        };
-      }
-
       const finalized: OfferingItem[] = valid.map((item) => {
         const parsedQuantity = Number.parseInt(item.quantity, 10);
 
@@ -283,7 +359,7 @@ export default function OrgPage() {
   };
 
   return (
-    <Box className="org-page-bg" sx={{ py: { xs: 2, md: 4 } }}>
+    <Box className="org-page-bg" sx={{ py: { xs: 0, md: 2.5 } }}>
       <Container maxWidth="lg">
         <Stack spacing={3}>
           <Box
@@ -293,6 +369,7 @@ export default function OrgPage() {
               justifyContent: "space-between",
               gap: 2,
               flexWrap: "wrap",
+              px: { xs: 0.5, md: 0 },
             }}
           >
             <Box>
@@ -317,74 +394,51 @@ export default function OrgPage() {
                   fontWeight: 800,
                 }}
               >
-                Community inventory
+                Member organisation profile
               </Typography>
             </Box>
-
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Chip
-                label={`${totalItemTypes} total item types`}
-                sx={{
-                  borderRadius: 999,
-                  bgcolor: "white",
-                  border: "1px solid var(--border)",
-                  fontWeight: 700,
-                }}
-              />
-              <Chip
-                label={`${totalUnits} total units`}
-                sx={{
-                  borderRadius: 999,
-                  bgcolor: "var(--accent-soft)",
-                  color: "#0f7f6c",
-                  border: "1px solid rgba(49, 237, 199, 0.28)",
-                  fontWeight: 700,
-                }}
-              />
-              <Chip
-                label={`${askingHighPriority} high priority needs`}
-                sx={{
-                  borderRadius: 999,
-                  bgcolor: "white",
-                  border: "1px solid var(--border)",
-                  fontWeight: 700,
-                }}
-              />
-            </Stack>
+          <Button
+            startIcon={<ChatBubbleOutlineRoundedIcon />}
+            sx={{
+              borderRadius: 999,
+              px: 2.2,
+              py: 1.1,
+              bgcolor: "var(--accent)",
+              color: "white",
+              fontWeight: 800,
+              textTransform: "none",
+              "& .MuiButton-startIcon": {
+                color: "white",
+              },
+              "&:hover": {
+                bgcolor: "var(--accent-strong)",
+                color: "white",
+              },
+            }}
+          >
+            Message
+          </Button>
           </Box>
 
           <Paper
             elevation={0}
             sx={{
-              p: { xs: 2, md: 3 },
+              p: 0,
+              overflow: "hidden",
               borderRadius: "28px",
               border: "1px solid var(--border)",
-              bgcolor: "rgba(255,255,255,0.92)",
+              bgcolor: "rgba(255,255,255,0.96)",
               boxShadow: "var(--shadow)",
-              backdropFilter: "blur(10px)",
             }}
           >
-            <OrgProfileHeader org={org} />
-          </Paper>
-
-          <Paper
-            elevation={0}
-            sx={{
-              p: { xs: 1.5, md: 2 },
-              borderRadius: "28px",
-              border: "1px solid var(--border)",
-              bgcolor: "var(--surface)",
-              boxShadow: "var(--shadow-soft)",
-            }}
-          >
-            <InventorySection
-              kind="asking"
-              items={org.askingItems}
-              onAdd={() => handleOpenAdd("asking")}
-              onEdit={(item) => handleOpenEdit("asking", item)}
-              onDeleteMany={(ids) => handleDeleteMany("asking", ids)}
-              onOpenCameraScan={() => handleOpenCameraScan("asking")}
-              scanLoading={scanLoading && scanKind === "asking"}
+            <OrgProfileHeader
+              org={org}
+              onBioChange={(value) =>
+                setOrg((prev) => ({
+                  ...prev,
+                  bio: value,
+                }))
+              }
             />
           </Paper>
 
@@ -398,15 +452,42 @@ export default function OrgPage() {
               boxShadow: "var(--shadow-soft)",
             }}
           >
-            <InventorySection
-              kind="offering"
-              items={org.offeringItems}
-              onAdd={() => handleOpenAdd("offering")}
-              onEdit={(item) => handleOpenEdit("offering", item)}
-              onDeleteMany={(ids) => handleDeleteMany("offering", ids)}
-              onOpenCameraScan={() => handleOpenCameraScan("offering")}
-              scanLoading={scanLoading && scanKind === "offering"}
-            />
+          <InventorySection
+            kind="asking"
+            title="Wishlist"
+            description={`These items are currently in need at ${org.id}. Anyone interested in making a donation may view them, and you will be notified when another organisation is offering them. Add items to the wishlist with + icon, and remove them when no longer needed by clicking the trash icon. You can also search for something specific, look for only items in a certain category, and sort by urgency if you'd like. Click on any existing item to change something about it.`}
+            items={org.askingItems}
+            onAddManual={() => handleOpenAdd("asking")}
+            onAddCamera={() => {}}
+            onDeleteManual={() => {}}
+            onDeleteMany={(ids) => handleDeleteMany("asking", ids)}
+            onDeleteCamera={() => {}}
+            onEdit={(item) => handleOpenEdit("asking", item)}
+          />
+          </Paper>
+
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 1.5, md: 2 },
+              borderRadius: "28px",
+              border: "1px solid var(--border)",
+              bgcolor: "var(--surface)",
+              boxShadow: "var(--shadow-soft)",
+            }}
+          >
+          <InventorySection
+            kind="offering"
+            title="Offerings"
+            description={`${org.id} has an over-abundance of these items, and is ready to share them with other organisation members. When you have too much of something, update this list with the + button, OR take a picture of everything at once to update automatically. When things get picked up or used, remove them from the list by clicking the trash icon, where you can choose to use the camera again.`}
+            items={org.offeringItems}
+            onAddManual={() => handleOpenAdd("offering")}
+            onAddCamera={() => handleOpenCameraScan("offering", "add")}
+            onDeleteManual={() => {}}
+            onDeleteMany={(ids) => handleDeleteMany("offering", ids)}
+            onDeleteCamera={() => handleOpenCameraScan("offering", "delete")}
+            onEdit={(item) => handleOpenEdit("offering", item)}
+          />
           </Paper>
         </Stack>
       </Container>
@@ -415,6 +496,7 @@ export default function OrgPage() {
         open={dialogOpen}
         mode={dialogMode}
         kind={dialogKind}
+        orgName={org.name}
         item={editingItem}
         onClose={handleCloseDialog}
         onSave={handleSaveItem}
@@ -423,6 +505,7 @@ export default function OrgPage() {
       <BulkDetectedItemsDialog
         open={scanDialogOpen}
         kind={scanKind}
+        action={scanAction}
         items={scannedItems}
         onClose={handleCloseScanDialog}
         onChange={setScannedItems}

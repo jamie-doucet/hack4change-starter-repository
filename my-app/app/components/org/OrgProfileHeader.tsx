@@ -1,27 +1,54 @@
 "use client";
 
-import { Avatar, Box, Chip, Stack, Typography } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
+import {
+  Box,
+  Button,
+  Chip,
+  IconButton,
+  InputBase,
+  Stack,
+  Typography,
+} from "@mui/material";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import CallOutlinedIcon from "@mui/icons-material/CallOutlined";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import type { OrgProfile } from "./types";
 
 type Props = {
   org: OrgProfile;
+  onBioChange: (value: string) => void;
 };
 
-export default function OrgProfileHeader({ org }: Props) {
+export default function OrgProfileHeader({ org, onBioChange }: Props) {
+  const [bioDraft, setBioDraft] = useState(org.bio);
+  const [editingBio, setEditingBio] = useState(false);
+  const bioInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    setBioDraft(org.bio);
+  }, [org.bio]);
+
+  useEffect(() => {
+    if (editingBio) {
+      bioInputRef.current?.focus();
+    }
+  }, [editingBio]);
+
+  const handleSaveBio = () => {
+    onBioChange(bioDraft.trim() || org.bio);
+    setEditingBio(false);
+  };
+
   return (
     <Box>
       <Box
         sx={{
-          height: { xs: 210, md: 270 },
-          borderRadius: "28px",
-          overflow: "hidden",
+          height: { xs: 220, md: 300 },
           position: "relative",
           backgroundImage: `url(${org.bannerImage})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
-          mb: 3,
-          border: "1px solid var(--border)",
         }}
       >
         <Box
@@ -29,65 +56,21 @@ export default function OrgProfileHeader({ org }: Props) {
             position: "absolute",
             inset: 0,
             background:
-              "linear-gradient(to top, rgba(0,0,0,0.58), rgba(0,0,0,0.12))",
+              "linear-gradient(to bottom, rgba(0,0,0,0.12), rgba(0,0,0,0.08) 45%, rgba(255,255,255,0.92) 88%, rgba(255,255,255,1) 100%)",
           }}
         />
-
-        <Box
-          sx={{
-            position: "absolute",
-            top: 18,
-            left: 18,
-            zIndex: 1,
-            px: 1.6,
-            py: 0.8,
-            borderRadius: 999,
-            bgcolor: "rgba(243,255,252,0.94)",
-            color: "#0f7f6c",
-            border: "1px solid rgba(49, 237, 199, 0.28)",
-            fontSize: "0.82rem",
-            fontWeight: 800,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-          }}
-        >
-          Community support
-        </Box>
       </Box>
 
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={2}
-        alignItems={{ xs: "flex-start", sm: "center" }}
+      <Box
         sx={{
-          mt: { xs: -7, sm: -6, md: -6 },
-          px: { xs: 1, sm: 2 },
+          px: { xs: 2, md: 3 },
+          pb: { xs: 2.5, md: 3 },
+          mt: { xs: -3, md: -4 },
           position: "relative",
           zIndex: 1,
         }}
       >
-        <Avatar
-          src={org.avatarImage}
-          alt={org.name}
-          sx={{
-            width: 104,
-            height: 104,
-            border: "5px solid white",
-            boxShadow: "var(--shadow-soft)",
-            bgcolor: "var(--accent-soft)",
-            color: "var(--foreground)",
-            fontWeight: 800,
-            fontSize: "2rem",
-          }}
-        >
-          {org.name[0]}
-        </Avatar>
-
-        <Box
-          sx={{
-            pt: { xs: 0.5, sm: 4.5, md: 6 },
-          }}
-        >
+        <Box sx={{ width: "100%" }}>
           <Typography
             variant="h3"
             sx={{
@@ -101,32 +84,136 @@ export default function OrgProfileHeader({ org }: Props) {
             {org.name}
           </Typography>
 
-          <Typography
-            variant="body1"
-            sx={{
-              color: "var(--muted)",
-              mt: 1,
-              maxWidth: 760,
-              fontSize: "1rem",
-            }}
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            useFlexGap
+            flexWrap="wrap"
+            sx={{ mt: 1.5 }}
           >
-            {org.bio}
-          </Typography>
+            <Chip
+              icon={<CallOutlinedIcon />}
+              label={org.phoneNumber}
+              sx={{
+                borderRadius: 999,
+                bgcolor: "white",
+                color: "var(--foreground)",
+                border: "1px solid var(--border)",
+                fontWeight: 700,
+              }}
+            />
 
-          <Chip
-            icon={<PlaceOutlinedIcon />}
-            label={org.location}
-            sx={{
-              mt: 1.75,
-              borderRadius: 999,
-              bgcolor: "var(--accent-soft)",
-              color: "var(--accent-strong)",
-              border: "1px solid rgba(40, 199, 167, 0.24)",
-              fontWeight: 700,
-            }}
-          />
+            <Chip
+              icon={<PlaceOutlinedIcon />}
+              label={org.address}
+              sx={{
+                borderRadius: 999,
+                bgcolor: "var(--accent-soft)",
+                color: "var(--accent-strong)",
+                border: "1px solid rgba(40, 199, 167, 0.24)",
+                fontWeight: 700,
+                maxWidth: "100%",
+                "& .MuiChip-label": {
+                  display: "block",
+                  whiteSpace: "normal",
+                },
+              }}
+            />
+          </Stack>
+
+          <Box sx={{ mt: 1.5, maxWidth: 900 }}>
+            {editingBio ? (
+              <Box
+                sx={{
+                  border: "1px solid var(--border)",
+                  borderRadius: "18px",
+                  bgcolor: "white",
+                  px: 1.5,
+                  py: 1.25,
+                  maxWidth: 760,
+                }}
+              >
+                <InputBase
+                  inputRef={bioInputRef}
+                  multiline
+                  fullWidth
+                  minRows={3}
+                  value={bioDraft}
+                  onChange={(e) => setBioDraft(e.target.value)}
+                  sx={{
+                    width: "100%",
+                    color: "var(--foreground)",
+                    fontSize: "1rem",
+                    lineHeight: 1.5,
+                  }}
+                />
+
+                <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1 }}>
+                  <Button
+                    onClick={() => {
+                      setBioDraft(org.bio);
+                      setEditingBio(false);
+                    }}
+                    sx={{
+                      borderRadius: 999,
+                      color: "var(--foreground)",
+                    }}
+                  >
+                    Cancel
+                  </Button>
+
+                  <Button
+                    onClick={handleSaveBio}
+                    sx={{
+                      borderRadius: 999,
+                      bgcolor: "var(--accent)",
+                      color: "#08352d",
+                      fontWeight: 800,
+                      "&:hover": {
+                        bgcolor: "var(--accent-strong)",
+                        color: "white",
+                      },
+                    }}
+                  >
+                    Save bio
+                  </Button>
+                </Stack>
+              </Box>
+            ) : (
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="flex-start"
+                sx={{ maxWidth: 900 }}
+              >
+                <Typography
+                  variant="body1"
+                  sx={{
+                    color: "var(--muted)",
+                    fontSize: "1rem",
+                    flex: 1,
+                  }}
+                >
+                  {org.bio}
+                </Typography>
+
+                <IconButton
+                  size="small"
+                  onClick={() => setEditingBio(true)}
+                  sx={{
+                    mt: "-2px",
+                    border: "1px solid var(--border)",
+                    bgcolor: "white",
+                    flexShrink: 0,
+                  }}
+                >
+                  <EditOutlinedIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+            )}
+          </Box>
         </Box>
-      </Stack>
+      </Box>
     </Box>
   );
 }

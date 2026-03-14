@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Box,
   FormControl,
   InputLabel,
   MenuItem,
@@ -20,6 +21,7 @@ type Props = {
   urgency: ItemUrgency;
   expiration: string;
   image?: string;
+  showNameField?: boolean;
   showImageField?: boolean;
   compactQuantity?: boolean;
   onNameChange: (value: string) => void;
@@ -65,6 +67,7 @@ export default function InventoryItemFields({
   urgency,
   expiration,
   image = "",
+  showNameField = true,
   showImageField = false,
   compactQuantity = false,
   onNameChange,
@@ -75,33 +78,41 @@ export default function InventoryItemFields({
   onImageChange,
 }: Props) {
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2.25}>
       {showImageField && onImageChange && (
-        <AskingItemImageField image={image} onImageChange={onImageChange} />
+        <Box sx={{ width: "100%", maxWidth: 620 }}>
+          <AskingItemImageField image={image} onImageChange={onImageChange} />
+        </Box>
       )}
 
-      <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-        <TextField
-          label="Name"
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          fullWidth
-          sx={fieldSx}
-          InputProps={{
-            sx: roomyInputSx,
-          }}
-        />
+      {showNameField && (
+        <Box sx={{ width: "100%", maxWidth: 460 }}>
+          <TextField
+            label="Name"
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            fullWidth
+            sx={fieldSx}
+            InputProps={{
+              sx: roomyInputSx,
+            }}
+          />
+        </Box>
+      )}
 
+      <Box
+        sx={{
+          width: "100%",
+          maxWidth: compactQuantity ? 180 : 220,
+        }}
+      >
         <TextField
           label="Quantity"
           type="number"
           value={quantity}
           onChange={(e) => onQuantityChange(e.target.value)}
-          fullWidth={!compactQuantity}
-          sx={{
-            ...fieldSx,
-            width: compactQuantity ? { xs: "100%", md: 140 } : "100%",
-          }}
+          fullWidth
+          sx={fieldSx}
           inputProps={{
             min: 1,
             step: 1,
@@ -110,9 +121,9 @@ export default function InventoryItemFields({
             sx: roomyInputSx,
           }}
         />
-      </Stack>
+      </Box>
 
-      <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+      <Box sx={{ width: "100%", maxWidth: 360 }}>
         <FormControl fullWidth sx={fieldSx}>
           <InputLabel>Category</InputLabel>
           <Select
@@ -131,7 +142,9 @@ export default function InventoryItemFields({
             ))}
           </Select>
         </FormControl>
+      </Box>
 
+      <Box sx={{ width: "100%", maxWidth: 360 }}>
         {kind === "asking" ? (
           <FormControl fullWidth sx={fieldSx}>
             <InputLabel>Urgency</InputLabel>
@@ -165,7 +178,7 @@ export default function InventoryItemFields({
             }}
           />
         )}
-      </Stack>
+      </Box>
     </Stack>
   );
 }

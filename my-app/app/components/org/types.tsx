@@ -24,6 +24,8 @@ export type OrgProfile = {
   id: string;
   name: string;
   bio: string;
+  phoneNumber: string;
+  address: string;
   location: string;
   bannerImage: string;
   avatarImage: string;
