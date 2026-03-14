@@ -11,9 +11,10 @@ type SelectedRequestItem = {
 type Props = {
   orgName: string;
   items: SelectedRequestItem[];
+  onSubmit: () => void;
 };
 
-export default function RequestListPanel({ orgName, items }: Props) {
+export default function RequestListPanel({ orgName, items, onSubmit }: Props) {
   const totalLines = items.length;
   const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -115,6 +116,7 @@ export default function RequestListPanel({ orgName, items }: Props) {
         <Button
           fullWidth
           disabled={items.length === 0}
+          onClick={onSubmit}
           sx={{
             mt: 2,
             borderRadius: 999,
@@ -133,7 +135,7 @@ export default function RequestListPanel({ orgName, items }: Props) {
             },
           }}
         >
-          Submit request
+          Send request
         </Button>
       </Box>
     </Box>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -15,8 +15,11 @@ import OrgProfileHeader from "@/app/components/org/OrgProfileHeader";
 import OfferingRequestCard from "@/app/components/org/OfferingRequestCard";
 import RequestListPanel from "@/app/components/org/RequestListPanel";
 import InventoryBrowseControls from "@/app/components/org/InventoryBrowseControls";
-import WishlistPreviewCard from "@/app/components/org/WishlistPreviewCard";
-import type {
+import { useRouter, useSearchParams } from "next/navigation";import {
+  appendRequestMessage,
+  openConversationThread,
+} from "@/app/lib/chat/chatStore";
+import WishlistPreviewCard from "@/app/components/org/WishlistPreviewCard";import type {
   AskingItem,
   ItemCategory,
   ItemUrgency,
@@ -93,6 +96,8 @@ function urgencyColor(urgency: AskingItem["urgency"]) {
 }
 
 export default function MemberOrgOfferingsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [requestedQuantities, setRequestedQuantities] = useState<Record<string, number>>({});
 
   const [offeringSearch, setOfferingSearch] = useState("");
@@ -101,6 +106,62 @@ export default function MemberOrgOfferingsPage() {
   const [wishlistSearch, setWishlistSearch] = useState("");
   const [wishlistCategoryFilter, setWishlistCategoryFilter] = useState<ItemCategory[]>([]);
   const [wishlistUrgencyFilter, setWishlistUrgencyFilter] = useState<"all" | ItemUrgency>("all");
+
+  useEffect(() => {
+    const prefillItem = searchParams.get("prefillItem");
+    const prefillQtyRaw = searchParams.get("prefillQty");
+
+    if (!prefillItem || !prefillQtyRaw) return;
+
+    const qty = Number.parseInt(prefillQtyRaw, 10);
+    if (!Number.isFinite(qty) || qty <= 0) return;
+
+    const matchedItem = viewedOrg.offeringItems.find(
+      (item) => item.id === prefillItem
+    );
+
+    if (!matchedItem) return;
+
+    setRequestedQuantities((prev) => {
+      const safeQty = Math.min(qty, matchedItem.quantity);
+
+      if (prev[prefillItem] === safeQty) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [prefillItem]: safeQty,
+      };
+    });
+  }, [searchParams]);
+
+  const handleOpenMessageThread = () => {
+    const threadId = openConversationThread({
+      orgLabel: viewedOrg.name,
+      memberOrgLabel: "Neighbouring organisation",
+      createdBy: "member_org",
+      subject: "Conversation",
+    });
+
+    router.push(`/messages/member-org?thread=${threadId}`);
+  };
+
+  const handleSubmitRequest = () => {
+    if (selectedItems.length === 0) return;
+
+    const threadId = appendRequestMessage({
+      orgLabel: viewedOrg.name,
+      memberOrgLabel: "Neighbouring organisation",
+      createdBy: "member_org",
+      requestLines: selectedItems.map(({ item, quantity }) => ({
+        itemName: item.name,
+        quantity,
+      })),
+    });
+
+    router.push(`/messages/member-org?thread=${threadId}`);
+  };
 
   const handleQuantityChange = (itemId: string, next: number) => {
     setRequestedQuantities((prev) => {
@@ -234,28 +295,28 @@ export default function MemberOrgOfferingsPage() {
                 Member organisation profile
               </Typography>
             </Box>
-
-            <Button
-              startIcon={<ChatBubbleOutlineRoundedIcon />}
-              sx={{
-                borderRadius: 999,
-                px: 2.2,
-                py: 1.1,
-                bgcolor: "var(--accent)",
+          <Button
+            startIcon={<ChatBubbleOutlineRoundedIcon />}
+            onClick={handleOpenMessageThread}
+            sx={{
+              borderRadius: 999,
+              px: 2.2,
+              py: 1.1,
+              bgcolor: "var(--accent)",
+              color: "white",
+              fontWeight: 800,
+              textTransform: "none",
+              "& .MuiButton-startIcon": {
                 color: "white",
-                fontWeight: 800,
-                textTransform: "none",
-                "& .MuiButton-startIcon": {
-                  color: "white",
-                },
-                "&:hover": {
-                  bgcolor: "var(--accent-strong)",
-                  color: "white",
-                },
-              }}
-            >
-              Message
-            </Button>
+              },
+              "&:hover": {
+                bgcolor: "var(--accent-strong)",
+                color: "white",
+              },
+            }}
+          >
+            Message
+          </Button>
           </Box>
 
           <Paper
@@ -401,10 +462,11 @@ export default function MemberOrgOfferingsPage() {
               </Paper>
             </Stack>
 
-            <RequestListPanel
-              orgName={viewedOrg.name}
-              items={selectedItems}
-            />
+          <RequestListPanel
+            orgName={viewedOrg.name}
+            items={selectedItems}
+            onSubmit={handleSubmitRequest}
+          />
           </Box>
         </Stack>
       </Container>

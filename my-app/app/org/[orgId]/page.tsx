@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Box, Button, Container, Paper, Stack, Typography } from "@mui/material";
 import OrgProfileHeader from "@/app/components/org/OrgProfileHeader";
 import InventorySection from "@/app/components/org/InventorySection";
@@ -72,6 +73,8 @@ function makeId() {
 }
 
 export default function OrgPage() {
+  const router = useRouter();
+
   const [org, setOrg] = useState<OrgProfile>(initialOrg);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -399,6 +402,7 @@ export default function OrgPage() {
             </Box>
           <Button
             startIcon={<ChatBubbleOutlineRoundedIcon />}
+            onClick={() => router.push("/messages/org")}
             sx={{
               borderRadius: 999,
               px: 2.2,
