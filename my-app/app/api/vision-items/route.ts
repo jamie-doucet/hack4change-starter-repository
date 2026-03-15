@@ -65,7 +65,7 @@ export async function POST(request: Request) {
               type: "input_text",
               text: [
                 "Return only a JSON object that matches the schema.",
-                "Look at this image and identify each distinct type of physical item visible.",
+                "Look at this image and identify each distinct type of physical item visible. only identify things that would look like someone is taking a picture of. nothing in the background",
                 "Group identical items together and estimate the quantity for each group.",
                 "Use short concrete item names like 'toothbrushes', 'winter coats', 'blankets', 'granola bars'.",
                 "Do not include anything outside the image.",

@@ -173,6 +173,24 @@ export default function AskingItemImageField({
       </Box>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
+                <Button
+          onClick={handlePickCamera}
+          startIcon={<PhotoCameraRoundedIcon />}
+          sx={{
+            borderRadius: 999,
+            px: 2,
+            bgcolor: "var(--accent)",
+            color: "#ffffff",
+            textTransform: "none",
+            fontWeight: 800,
+            "&:hover": {
+              bgcolor: "var(--accent-strong)",
+              color: "white",
+            },
+          }}
+        >
+          Camera
+        </Button>
         <Button
           onClick={handlePickUpload}
           startIcon={<UploadRoundedIcon />}
@@ -191,25 +209,6 @@ export default function AskingItemImageField({
           }}
         >
           Upload image
-        </Button>
-
-        <Button
-          onClick={handlePickCamera}
-          startIcon={<PhotoCameraRoundedIcon />}
-          sx={{
-            borderRadius: 999,
-            px: 2,
-            bgcolor: "var(--accent)",
-            color: "#08352d",
-            textTransform: "none",
-            fontWeight: 800,
-            "&:hover": {
-              bgcolor: "var(--accent-strong)",
-              color: "white",
-            },
-          }}
-        >
-          Camera
         </Button>
       </Stack>
 

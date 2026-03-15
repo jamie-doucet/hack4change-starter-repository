@@ -168,12 +168,6 @@ export default function BulkDetectedItemsDialog({
             >
               {action === "add" ? "Review detected items" : "Review items to delete"}
             </Typography>
-
-            <Typography sx={{ mt: 1, color: "var(--muted)" }}>
-              {action === "add"
-                ? "Edit names, quantities, images, categories, or remove anything before saving."
-                : "These matches come from your current inventory. The quantity shown is what was detected in the photo."}
-            </Typography>
           </Box>
 
           {action === "add" && (
@@ -442,7 +436,7 @@ export default function BulkDetectedItemsDialog({
               },
             }}
           >
-            {action === "add" ? "Save detected items" : "Delete matched items"}
+            {action === "add" ? "Save" : "Delete matched items"}
           </Button>
         </Stack>
       </DialogActions>

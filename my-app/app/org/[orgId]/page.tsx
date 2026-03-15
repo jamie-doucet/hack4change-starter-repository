@@ -524,30 +524,6 @@ export default function OrgPage() {
                 Member organisation profile
               </Typography>
             </Box>
-
-            <Button
-              startIcon={<ChatBubbleOutlineRoundedIcon />}
-              onClick={() => router.push("/messages/org")}
-              sx={{
-                display: { xs: "none", md: "inline-flex" },
-                borderRadius: 999,
-                px: 2.2,
-                py: 1.1,
-                bgcolor: "var(--accent)",
-                color: "white",
-                fontWeight: 800,
-                textTransform: "none",
-                "& .MuiButton-startIcon": {
-                  color: "white",
-                },
-                "&:hover": {
-                  bgcolor: "var(--accent-strong)",
-                  color: "white",
-                },
-              }}
-            >
-              Message
-            </Button>
           </Box>
 
           <Paper
