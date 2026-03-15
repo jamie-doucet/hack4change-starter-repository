@@ -47,102 +47,10 @@ type AggregateItem = {
 };
 
 const FALLBACK_BANNER =
-  "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=1600&q=80";
+  "";
 
 const orgs: NetworkOrg[] = [
-  {
-    id: "humanity-project",
-    name: "The Humanity Project",
-    bio: "Helping the Moncton community with essentials, outreach support, and day-to-day resources for people who need them most.",
-    phoneNumber: "(506) 555-0187",
-    address: "123 Main Street, Moncton, NB E1C 1A1",
-    location: "Moncton, NB",
-    bannerImage:
-      "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=1600&q=80",
-    avatarImage: "",
-    askingItems: [
-      {
-        id: "a1",
-        name: "Winter Coats",
-        category: "clothing",
-        urgency: "high",
-        quantity: 12,
-        image: "",
-      },
-      {
-        id: "a2",
-        name: "Toothbrushes",
-        category: "hygiene",
-        urgency: "medium",
-        quantity: 40,
-        image: "",
-      },
-    ],
-    offeringItems: [
-      {
-        id: "o1",
-        name: "Bottled Water",
-        category: "food",
-        expiration: "2026-04-10",
-        quantity: 24,
-        image: "https://placehold.co/120x120?text=Water",
-      },
-      {
-        id: "o2",
-        name: "Blankets",
-        category: "supplies",
-        quantity: 8,
-        image: "https://placehold.co/120x120?text=Blanket",
-      },
-    ],
-  },
-  {
-    id: "river-outreach",
-    name: "River Outreach Centre",
-    bio: "Neighbourhood outreach, food support, and emergency essentials.",
-    phoneNumber: "(506) 555-0129",
-    address: "89 River Road, Moncton, NB E1A 2B3",
-    location: "Moncton, NB",
-    bannerImage:
-      "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=1600&q=80",
-    avatarImage: "",
-    askingItems: [
-      {
-        id: "a3",
-        name: "Granola Bars",
-        category: "food",
-        urgency: "high",
-        quantity: 50,
-        image: "",
-      },
-      {
-        id: "a4",
-        name: "Blankets",
-        category: "supplies",
-        urgency: "low",
-        quantity: 6,
-        image: "",
-      },
-    ],
-    offeringItems: [
-      {
-        id: "o3",
-        name: "Winter Coats",
-        category: "clothing",
-        expiration: undefined,
-        quantity: 7,
-        image: "https://placehold.co/120x120?text=Coat",
-      },
-      {
-        id: "o4",
-        name: "Toothbrushes",
-        category: "hygiene",
-        expiration: "2026-05-03",
-        quantity: 30,
-        image: "https://placehold.co/120x120?text=Brush",
-      },
-    ],
-  },
+
 ];
 
 const itemCatalog: Record<string, { image: string; tags: string[] }> = {
@@ -511,20 +419,6 @@ export default function HomePage() {
               Welcome to GMHSC resource sharing
             </Typography>
 
-            <Typography
-              sx={{
-                mt: 1.2,
-                color: "var(--muted)",
-                fontSize: "1rem",
-                maxWidth: 920,
-                lineHeight: 1.65,
-              }}
-            >
-              Browse what organisations are currently asking for and what they are
-              offering across the network. Select an item to view every participating
-              location in one place.
-            </Typography>
-
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
               <Button
                 onClick={() => setMode("asking")}
@@ -601,7 +495,7 @@ export default function HomePage() {
             <TextField
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={`Search ${mode === "asking" ? "offerings" : "wishlist"}`}
+              placeholder={`Search ${mode === "asking" ? "offerings" : "all asking items"}`}
               fullWidth
               sx={{
                 mb: 1.5,

@@ -13,14 +13,75 @@ import {
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import CallOutlinedIcon from "@mui/icons-material/CallOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
 import type { OrgProfile } from "./types";
 
 type Props = {
   org: OrgProfile;
   onBioChange: (value: string) => void;
+  onMessageClick?: () => void;
 };
 
-export default function OrgProfileHeader({ org, onBioChange }: Props) {
+const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+
+function normalizeHref(url: string) {
+  return url.startsWith("http://") || url.startsWith("https://")
+    ? url
+    : `https://${url}`;
+}
+
+function splitTrailingPunctuation(url: string) {
+  const match = url.match(/^(.*?)([),.!?:;]+)?$/);
+  return {
+    cleanUrl: match?.[1] || url,
+    trailing: match?.[2] || "",
+  };
+}
+
+function renderBioWithLinks(text: string) {
+  const parts = text.split(urlRegex);
+
+  return parts.map((part, index) => {
+    if (!part) return null;
+
+    if (part.match(urlRegex)) {
+      const { cleanUrl, trailing } = splitTrailingPunctuation(part);
+
+      return (
+        <span key={`${cleanUrl}-${index}`}>
+          <Box
+            component="a"
+            href={normalizeHref(cleanUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{
+              color: "var(--accent-strong)",
+              textDecoration: "none",
+              wordBreak: "break-word",
+              transition: "color 0.16s ease, text-decoration-color 0.16s ease",
+              "&:hover": {
+                color: "var(--accent-strong)",
+                textDecoration: "underline",
+                textUnderlineOffset: "2px",
+              },
+            }}
+          >
+            {cleanUrl}
+          </Box>
+          {trailing}
+        </span>
+      );
+    }
+
+    return <span key={index}>{part}</span>;
+  });
+}
+
+export default function OrgProfileHeader({
+  org,
+  onBioChange,
+  onMessageClick,
+}: Props) {
   const [bioDraft, setBioDraft] = useState(org.bio);
   const [editingBio, setEditingBio] = useState(false);
   const bioInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -121,6 +182,33 @@ export default function OrgProfileHeader({ org, onBioChange }: Props) {
             />
           </Stack>
 
+          {onMessageClick && (
+            <Box sx={{ mt: 1.5, display: { xs: "block", md: "none" } }}>
+              <Button
+                startIcon={<ChatBubbleOutlineRoundedIcon />}
+                onClick={onMessageClick}
+                sx={{
+                  borderRadius: 999,
+                  px: 2.2,
+                  py: 1.05,
+                  bgcolor: "var(--accent)",
+                  color: "white",
+                  fontWeight: 800,
+                  textTransform: "none",
+                  "& .MuiButton-startIcon": {
+                    color: "white",
+                  },
+                  "&:hover": {
+                    bgcolor: "var(--accent-strong)",
+                    color: "white",
+                  },
+                }}
+              >
+                Message
+              </Button>
+            </Box>
+          )}
+
           <Box sx={{ mt: 1.5, maxWidth: 900 }}>
             {editingBio ? (
               <Box
@@ -167,7 +255,7 @@ export default function OrgProfileHeader({ org, onBioChange }: Props) {
                     sx={{
                       borderRadius: 999,
                       bgcolor: "var(--accent)",
-                      color: "#08352d",
+                      color: "white",
                       fontWeight: 800,
                       "&:hover": {
                         bgcolor: "var(--accent-strong)",
@@ -192,9 +280,11 @@ export default function OrgProfileHeader({ org, onBioChange }: Props) {
                     color: "var(--muted)",
                     fontSize: "1rem",
                     flex: 1,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
                   }}
                 >
-                  {org.bio}
+                  {renderBioWithLinks(org.bio)}
                 </Typography>
 
                 <IconButton

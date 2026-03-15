@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Divider,
+  Drawer,
+  IconButton,
   Paper,
   Stack,
   TextField,
@@ -11,6 +13,7 @@ import {
   Button,
 } from "@mui/material";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
+import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RequestMessageBubble from "./RequestMessageBubble";
 import {
@@ -19,7 +22,8 @@ import {
   subscribeMessages,
   subscribeThreadsForOrg,
   updateRequestMessageStatus,
-  appendRequestMessage, markMatchOfferUsed
+  appendRequestMessage,
+  markMatchOfferUsed,
 } from "@/app/lib/firestore/messages";
 import {
   cancelHeldRequest,
@@ -86,7 +90,8 @@ export default function ChatWorkspace({
   const [selectedThreadId, setSelectedThreadId] = useState("");
   const [draft, setDraft] = useState("");
   const [requestingMatchMessageId, setRequestingMatchMessageId] = useState("");
-  
+  const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
+
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -224,7 +229,7 @@ export default function ChatWorkspace({
         senderOrgId: offer.offeringOrgId,
         senderOrgName: offer.offeringOrgName,
         requestId,
-        text: "Automatic reply: This is only a request and nothing has been confirmed yet. You will receive another message if it is accepted or cancelled.",
+        text: `Your request has been submitted. Stay tuned for someone at ${offer.offeringOrgName} to respond! (Automated reply)`,
       });
     } catch (error) {
       console.error(error);
@@ -258,7 +263,7 @@ export default function ChatWorkspace({
         senderOrgId: currentOrgId,
         senderOrgName: currentOrgName,
         requestId,
-        text: "Automatic reply: Your request has been accepted and placed on hold. Please collect it within 48 hours or it may be released.",
+        text: `Your request has been approved and your requested items will remain on hold for 48 hours. After that, the items go back on the list of ${currentOrgName}'s offerings.  (Automated reply)`,
       });
     } catch (error) {
       console.error(error);
@@ -314,13 +319,147 @@ export default function ChatWorkspace({
         senderOrgId: currentOrgId,
         senderOrgName: currentOrgName,
         requestId,
-        text: "Automatic reply: This request has been cancelled.",
+        text: `Nevermind.. This request has been cancelled. (Automated reply)`,
       });
     } catch (error) {
       console.error(error);
       window.alert("Could not cancel this request.");
     }
   };
+
+  const handleSelectThread = (threadId: string) => {
+    setSelectedThreadId(threadId);
+    setMobileThreadsOpen(false);
+  };
+
+  const threadList = (
+    <Box
+      sx={{
+        minWidth: 0,
+        minHeight: 0,
+        overflow: "hidden",
+        bgcolor: "#fbfbf9",
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+      }}
+    >
+      <Box sx={{ p: 2, flexShrink: 0 }}>
+        <Typography
+          variant="h4"
+          sx={{
+            fontWeight: 800,
+            letterSpacing: "-0.04em",
+            lineHeight: 1,
+          }}
+        >
+          {title}
+        </Typography>
+
+        <Typography
+          sx={{
+            mt: 0.8,
+            color: "var(--muted)",
+            fontSize: "0.94rem",
+          }}
+        >
+          Conversations update live through Firestore.
+        </Typography>
+      </Box>
+
+      <Divider sx={{ borderColor: "var(--border)", flexShrink: 0 }} />
+
+      <Stack
+        spacing={0.5}
+        sx={{
+          p: 1,
+          minHeight: 0,
+          flex: 1,
+          overflowY: "auto",
+          overflowX: "hidden",
+        }}
+      >
+        {threads.length === 0 ? (
+          <Typography sx={{ color: "var(--muted)", p: 1 }}>
+            No conversations yet.
+          </Typography>
+        ) : (
+          threads.map((thread) => (
+            <Box
+              key={thread.id}
+              onClick={() => handleSelectThread(thread.id)}
+              sx={{
+                p: 1.25,
+                borderRadius: "18px",
+                cursor: "pointer",
+                bgcolor:
+                  selectedThreadId === thread.id
+                    ? "var(--accent-soft)"
+                    : "transparent",
+                border:
+                  selectedThreadId === thread.id
+                    ? "1px solid rgba(40, 199, 167, 0.3)"
+                    : "1px solid transparent",
+                transition: "0.16s ease",
+                minWidth: 0,
+              }}
+            >
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="flex-start"
+                spacing={1}
+              >
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography
+                    sx={{
+                      fontWeight: 800,
+                      letterSpacing: "-0.02em",
+                    }}
+                    noWrap
+                  >
+                    {getPeerLabel(thread, currentOrgId)}
+                  </Typography>
+
+                  <Typography
+                    sx={{
+                      color: "var(--foreground)",
+                      fontSize: "0.92rem",
+                      mt: 0.2,
+                    }}
+                    noWrap
+                  >
+                    {thread.subject}
+                  </Typography>
+
+                  <Typography
+                    sx={{
+                      color: "var(--muted)",
+                      fontSize: "0.86rem",
+                      mt: 0.5,
+                    }}
+                    noWrap
+                  >
+                    {lastMessagePreview(thread)}
+                  </Typography>
+                </Box>
+
+                <Typography
+                  sx={{
+                    color: "var(--muted)",
+                    fontSize: "0.8rem",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {formatTime(thread.updatedAt || thread.lastMessageAt)}
+                </Typography>
+              </Stack>
+            </Box>
+          ))
+        )}
+      </Stack>
+    </Box>
+  );
 
   return (
     <Box
@@ -331,6 +470,23 @@ export default function ChatWorkspace({
         bgcolor: "var(--background)",
       }}
     >
+      <Drawer
+        anchor="left"
+        open={mobileThreadsOpen}
+        onClose={() => setMobileThreadsOpen(false)}
+        sx={{
+          display: { xs: "block", md: "none" },
+          "& .MuiDrawer-paper": {
+            width: 320,
+            maxWidth: "88vw",
+            borderRight: "1px solid var(--border)",
+            boxSizing: "border-box",
+          },
+        }}
+      >
+        {threadList}
+      </Drawer>
+
       <Paper
         elevation={0}
         sx={{
@@ -354,130 +510,17 @@ export default function ChatWorkspace({
         >
           <Box
             sx={{
+              display: { xs: "none", md: "flex" },
               minWidth: 0,
               minHeight: 0,
               overflow: "hidden",
               borderRight: { md: "1px solid var(--border)" },
               borderBottom: { xs: "1px solid var(--border)", md: "none" },
               bgcolor: "#fbfbf9",
-              display: "flex",
               flexDirection: "column",
             }}
           >
-            <Box sx={{ p: 2, flexShrink: 0 }}>
-              <Typography
-                variant="h4"
-                sx={{
-                  fontWeight: 800,
-                  letterSpacing: "-0.04em",
-                  lineHeight: 1,
-                }}
-              >
-                {title}
-              </Typography>
-
-              <Typography
-                sx={{
-                  mt: 0.8,
-                  color: "var(--muted)",
-                  fontSize: "0.94rem",
-                }}
-              >
-                Conversations update live through Firestore.
-              </Typography>
-            </Box>
-
-            <Divider sx={{ borderColor: "var(--border)", flexShrink: 0 }} />
-
-            <Stack
-              spacing={0.5}
-              sx={{
-                p: 1,
-                minHeight: 0,
-                flex: 1,
-                overflowY: "auto",
-                overflowX: "hidden",
-              }}
-            >
-              {threads.length === 0 ? (
-                <Typography sx={{ color: "var(--muted)", p: 1 }}>
-                  No conversations yet.
-                </Typography>
-              ) : (
-                threads.map((thread) => (
-                  <Box
-                    key={thread.id}
-                    onClick={() => setSelectedThreadId(thread.id)}
-                    sx={{
-                      p: 1.25,
-                      borderRadius: "18px",
-                      cursor: "pointer",
-                      bgcolor:
-                        selectedThreadId === thread.id
-                          ? "var(--accent-soft)"
-                          : "transparent",
-                      border:
-                        selectedThreadId === thread.id
-                          ? "1px solid rgba(40, 199, 167, 0.3)"
-                          : "1px solid transparent",
-                      transition: "0.16s ease",
-                      minWidth: 0,
-                    }}
-                  >
-                    <Stack
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="flex-start"
-                      spacing={1}
-                    >
-                      <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography
-                          sx={{
-                            fontWeight: 800,
-                            letterSpacing: "-0.02em",
-                          }}
-                          noWrap
-                        >
-                          {getPeerLabel(thread, currentOrgId)}
-                        </Typography>
-
-                        <Typography
-                          sx={{
-                            color: "var(--foreground)",
-                            fontSize: "0.92rem",
-                            mt: 0.2,
-                          }}
-                          noWrap
-                        >
-                          {thread.subject}
-                        </Typography>
-
-                        <Typography
-                          sx={{
-                            color: "var(--muted)",
-                            fontSize: "0.86rem",
-                            mt: 0.5,
-                          }}
-                          noWrap
-                        >
-                          {lastMessagePreview(thread)}
-                        </Typography>
-                      </Box>
-
-                      <Typography
-                        sx={{
-                          color: "var(--muted)",
-                          fontSize: "0.8rem",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {formatTime(thread.updatedAt || thread.lastMessageAt)}
-                      </Typography>
-                    </Stack>
-                  </Box>
-                ))
-              )}
-            </Stack>
+            {threadList}
           </Box>
 
           <Box
@@ -498,29 +541,56 @@ export default function ChatWorkspace({
                 minWidth: 0,
               }}
             >
-              {selectedThread ? (
-                <>
-                  <Typography
-                    sx={{
-                      fontWeight: 800,
-                      letterSpacing: "-0.02em",
-                    }}
-                    noWrap
-                  >
-                    {getPeerLabel(selectedThread, currentOrgId)}
-                  </Typography>
-                  <Typography
-                    sx={{ color: "var(--muted)", fontSize: "0.9rem" }}
-                    noWrap
-                  >
-                    {selectedThread.subject}
-                  </Typography>
-                </>
-              ) : (
-                <Typography sx={{ color: "var(--muted)" }}>
-                  Select a conversation
-                </Typography>
-              )}
+              <Stack direction="row" spacing={1.25} alignItems="center">
+                <IconButton
+                  onClick={() => setMobileThreadsOpen(true)}
+                  sx={{
+                    display: { xs: "inline-flex", md: "none" },
+                    border: "1px solid var(--border)",
+                    bgcolor: "white",
+                    flexShrink: 0,
+                  }}
+                >
+                  <MenuRoundedIcon />
+                </IconButton>
+
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  {selectedThread ? (
+                    <>
+                      <Typography
+                        sx={{
+                          fontWeight: 800,
+                          letterSpacing: "-0.02em",
+                        }}
+                        noWrap
+                      >
+                        {getPeerLabel(selectedThread, currentOrgId)}
+                      </Typography>
+                      <Typography
+                        sx={{ color: "var(--muted)", fontSize: "0.9rem" }}
+                        noWrap
+                      >
+                        {selectedThread.subject}
+                      </Typography>
+                    </>
+                  ) : (
+                    <>
+                      <Typography
+                        sx={{
+                          fontWeight: 800,
+                          letterSpacing: "-0.02em",
+                        }}
+                        noWrap
+                      >
+                        {title}
+                      </Typography>
+                      <Typography sx={{ color: "var(--muted)", fontSize: "0.9rem" }} noWrap>
+                        Select a conversation
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+              </Stack>
             </Box>
 
             <Stack
@@ -544,63 +614,65 @@ export default function ChatWorkspace({
                   No messages yet. Send the first one below.
                 </Typography>
               ) : (
-              messages.map((message) =>
-                message.type === "request" ? (
-                  <RequestMessageBubble
-                    key={message.id}
-                    message={message}
-                    mine={message.senderOrgId === currentOrgId}
-                    viewerRole={viewerRole}
-                    onHold={() => handleHoldRequest(message.id, message.requestId)}
-                    onDone={() => handleDoneRequest(message.id, message.requestId)}
-                    onCancel={() => handleCancelRequest(message.id, message.requestId)}
-                  />
-                ) : message.type === "match_offer" ? (
-                  <MatchOfferMessageBubble
-                    key={message.id}
-                    message={message}
-                    mine={message.senderOrgId === currentOrgId}
-                    canRequest={message.senderOrgId !== currentOrgId}
-                    submitting={requestingMatchMessageId === message.id}
-                    onRequestNow={() => handleRequestFromMatch(message)}
-                  />
-                ) : (
-                  <Box
-                    key={message.id}
-                    sx={{
-                      maxWidth: "min(520px, 100%)",
-                      width: "fit-content",
-                      minWidth: 0,
-                      flexShrink: 0,
-                      alignSelf:
-                        message.senderOrgId === currentOrgId ? "flex-end" : "flex-start",
-                      bgcolor:
-                        message.senderOrgId === currentOrgId ? "var(--accent)" : "white",
-                      color:
-                        message.senderOrgId === currentOrgId ? "white" : "var(--foreground)",
-                      border:
-                        message.senderOrgId === currentOrgId ? "none" : "1px solid var(--border)",
-                      borderRadius: "22px",
-                      px: 1.5,
-                      py: 1.2,
-                      boxShadow: "var(--shadow-soft)",
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    <Typography sx={{ whiteSpace: "pre-wrap" }}>{message.text}</Typography>
-                    <Typography
+                messages.map((message) =>
+                  message.type === "request" ? (
+                    <RequestMessageBubble
+                      key={message.id}
+                      message={message}
+                      mine={message.senderOrgId === currentOrgId}
+                      viewerRole={viewerRole}
+                      onHold={() => handleHoldRequest(message.id, message.requestId)}
+                      onDone={() => handleDoneRequest(message.id, message.requestId)}
+                      onCancel={() => handleCancelRequest(message.id, message.requestId)}
+                    />
+                  ) : message.type === "match_offer" ? (
+                    <MatchOfferMessageBubble
+                      key={message.id}
+                      message={message}
+                      mine={message.senderOrgId === currentOrgId}
+                      canRequest={message.senderOrgId !== currentOrgId}
+                      submitting={requestingMatchMessageId === message.id}
+                      onRequestNow={() => handleRequestFromMatch(message)}
+                    />
+                  ) : (
+                    <Box
+                      key={message.id}
                       sx={{
-                        mt: 0.5,
-                        fontSize: "0.78rem",
-                        opacity: 0.7,
+                        maxWidth: "min(520px, 100%)",
+                        width: "fit-content",
+                        minWidth: 0,
+                        flexShrink: 0,
+                        alignSelf:
+                          message.senderOrgId === currentOrgId ? "flex-end" : "flex-start",
+                        bgcolor:
+                          message.senderOrgId === currentOrgId ? "var(--accent)" : "white",
+                        color:
+                          message.senderOrgId === currentOrgId ? "white" : "var(--foreground)",
+                        border:
+                          message.senderOrgId === currentOrgId
+                            ? "none"
+                            : "1px solid var(--border)",
+                        borderRadius: "22px",
+                        px: 1.5,
+                        py: 1.2,
+                        boxShadow: "var(--shadow-soft)",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
                       }}
                     >
-                      {formatTime(message.createdAt)}
-                    </Typography>
-                  </Box>
+                      <Typography sx={{ whiteSpace: "pre-wrap" }}>{message.text}</Typography>
+                      <Typography
+                        sx={{
+                          mt: 0.5,
+                          fontSize: "0.78rem",
+                          opacity: 0.7,
+                        }}
+                      >
+                        {formatTime(message.createdAt)}
+                      </Typography>
+                    </Box>
+                  )
                 )
-              )
               )}
             </Stack>
 

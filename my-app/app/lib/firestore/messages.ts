@@ -172,7 +172,7 @@ export async function sendMatchOfferMessage(args: {
     availableQuantity: number;
   };
 }) {
-  const text = `${args.senderOrgName} now has ${args.matchOffer.itemName} available.`;
+  const text = `Good news! It looks like ${args.senderOrgName} has something you need. When you're ready, send a request for ${args.matchOffer.availableQuantity} ${args.matchOffer.itemName}(s) and arrange to pick it up. (Automated message)`;
 
   await addDoc(collection(db, "threads", args.threadId, "messages"), {
     senderRole: "org",

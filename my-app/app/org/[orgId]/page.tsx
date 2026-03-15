@@ -488,7 +488,7 @@ export default function OrgPage() {
   };
 
   return (
-    <Box className="org-page-bg" sx={{ py: { xs: 0, md: 2.5 } }}>
+    <Box className="org-page-bg" sx={{ py: { xs: 1.5, md: 2.5 } }}>
       <input
         ref={fileInputRef}
         type="file"
@@ -529,6 +529,7 @@ export default function OrgPage() {
               startIcon={<ChatBubbleOutlineRoundedIcon />}
               onClick={() => router.push("/messages/org")}
               sx={{
+                display: { xs: "none", md: "inline-flex" },
                 borderRadius: 999,
                 px: 2.2,
                 py: 1.1,
@@ -560,7 +561,11 @@ export default function OrgPage() {
               boxShadow: "var(--shadow)",
             }}
           >
-            <OrgProfileHeader org={org} onBioChange={handleBioChange} />
+            <OrgProfileHeader
+              org={org}
+              onBioChange={handleBioChange}
+              onMessageClick={() => router.push("/messages/org")}
+            />
           </Paper>
 
           <Paper
@@ -573,19 +578,19 @@ export default function OrgPage() {
               boxShadow: "var(--shadow-soft)",
             }}
           >
-          <InventorySection
-            kind="asking"
-            title="Wishlist"
-            description={`These items are currently in need at ${org.id}. Anyone interested in making a donation may view them, and you will be notified when another organisation is offering them. Add items to the wishlist with the + icon, and remove them when no longer needed by clicking the trash icon. You can also search for something specific, look for only items in a certain category, and sort by urgency if you'd like. Click on any existing item to change something about it.`}
-            items={org.askingItems}
-            onAddManual={() => handleOpenAdd("asking")}
-            onAddCamera={() => {}}
-            onAddGroup={() => setWishlistGroupDialogOpen(true)}
-            onDeleteManual={() => {}}
-            onDeleteMany={(ids) => handleDeleteMany("asking", ids)}
-            onDeleteCamera={() => {}}
-            onEdit={(item) => handleOpenEdit("asking", item)}
-          />
+            <InventorySection
+              kind="asking"
+              title="Wishlist"
+              description={`These items are currently in need at ${org.id}. Anyone interested in making a donation may view them, and you will be notified when another organisation is offering them. Add items to the wishlist with the + icon, and remove them when no longer needed by clicking the trash icon. You can also search for something specific, look for only items in a certain category, and sort by urgency if you'd like. Click on any existing item to change something about it.`}
+              items={org.askingItems}
+              onAddManual={() => handleOpenAdd("asking")}
+              onAddCamera={() => {}}
+              onAddGroup={() => setWishlistGroupDialogOpen(true)}
+              onDeleteManual={() => {}}
+              onDeleteMany={(ids) => handleDeleteMany("asking", ids)}
+              onDeleteCamera={() => {}}
+              onEdit={(item) => handleOpenEdit("asking", item)}
+            />
           </Paper>
 
           <Paper
@@ -601,7 +606,7 @@ export default function OrgPage() {
             <InventorySection
               kind="offering"
               title="Offerings"
-              description={`${org.id} has an over-abundance of these items, and is ready to share them with other organisation members. When you have too much of something, update this list with the + button, or take a picture of everything at once to update automatically later. When things get picked up or used, remove them from the list by clicking the trash icon.`}
+              description={`${org.name} has an over-abundance of these items, and is ready to share them with other organisation members. When you have too much of something, update this list with the + button. You can choose to enter items manually (recommended for large amounts of the same thing) OR take a picture of everything that you want to add all at once to update the offerings list automatically. When things are no longer being offered (they get picked up or used), remove them from the list by clicking the trash icon, where you can choose to use the camera again.`}
               items={org.offeringItems}
               onAddManual={() => handleOpenAdd("offering")}
               onAddCamera={() => openCameraFlow("add")}

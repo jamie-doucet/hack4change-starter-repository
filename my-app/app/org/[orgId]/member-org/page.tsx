@@ -274,7 +274,7 @@ export default function MemberOrgOfferingsPage() {
         senderOrgId: viewedOrg.id,
         senderOrgName: viewedOrg.name,
         requestId,
-        text: "Automatic reply: This is only a request and nothing has been confirmed yet. You will receive another message if it is accepted or cancelled.",
+        text: `Your request has been submitted. Stay tuned for someone at ${viewedOrg.name} to respond! (Automated reply)`,
       });
 
 router.push(`/messages/member-org?thread=${threadId}`);
@@ -486,10 +486,7 @@ router.push(`/messages/member-org?thread=${threadId}`);
                     maxWidth: 980,
                   }}
                 >
-                  {viewedOrg.id} has an over-abundance of these items, and is ready to
-                  share them with other organisation members. Use the quantity controls
-                  to choose what your organisation would like to request, then review
-                  the request list before submitting it.
+                  {viewedOrg.name} has an over-abundance of these items, and is ready to share them with other organisation members. If you want to collect something here, create a request
                 </Typography>
 
                 <InventoryBrowseControls

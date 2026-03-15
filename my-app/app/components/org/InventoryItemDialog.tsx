@@ -168,7 +168,21 @@ export default function InventoryItemDialog({
 
   const titleText =
     name.trim() ||
-    (kind === "asking" ? "Untitled request item" : "Untitled offering item");
+    (kind === "asking" ? "Untitled wishlist item" : "Untitled offering item");
+
+  const appBarTitle =
+    mode === "add"
+      ? kind === "asking"
+        ? "Add wishlist item"
+        : "Add offering item"
+      : kind === "asking"
+        ? "Edit wishlist item"
+        : "Edit offering item";
+
+  const createTitle =
+    kind === "asking"
+      ? "Create another wishlist item"
+      : "Create another offering item";
 
   return (
     <Dialog
@@ -194,21 +208,33 @@ export default function InventoryItemDialog({
           backdropFilter: "blur(10px)",
         }}
       >
-        <Toolbar sx={{ justifyContent: "space-between" }}>
+        <Toolbar sx={{ justifyContent: "space-between", gap: 1 }}>
           <Button
             onClick={onClose}
             disabled={saving}
             sx={{
-              color: "var(--foreground)",
               borderRadius: 999,
-              px: 2,
+              px: 2.2,
+              py: 1,
+              bgcolor: "var(--accent)",
+              color: "white",
+              fontWeight: 800,
+              textTransform: "none",
+              "&:hover": {
+                bgcolor: "var(--accent-strong)",
+                color: "white",
+              },
+              "&.Mui-disabled": {
+                bgcolor: "#d7efe8",
+                color: "#6c847d",
+              },
             }}
           >
             Cancel
           </Button>
 
           <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: "-0.03em" }}>
-            {mode === "add" ? "Add item" : "Edit item"}
+            {appBarTitle}
           </Typography>
 
           <Button
@@ -217,11 +243,14 @@ export default function InventoryItemDialog({
             sx={{
               borderRadius: 999,
               px: 2.2,
+              py: 1,
               bgcolor: "var(--accent)",
-              color: "#08352d",
+              color: "white",
               fontWeight: 800,
+              textTransform: "none",
               "&:hover": {
                 bgcolor: "var(--accent-strong)",
+                color: "white",
               },
               "&.Mui-disabled": {
                 bgcolor: "#d7efe8",
@@ -313,7 +342,7 @@ export default function InventoryItemDialog({
                   variant="h4"
                   sx={{ fontWeight: 800, letterSpacing: "-0.04em" }}
                 >
-                  {kind === "asking" ? "Create a new request item" : "Create a new offering item"}
+                  {createTitle}
                 </Typography>
               )}
             </Box>

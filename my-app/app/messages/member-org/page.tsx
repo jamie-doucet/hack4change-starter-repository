@@ -1,9 +1,8 @@
-"use client";
-
+import { Suspense } from "react";
 import ChatWorkspace from "@/app/components/chat/ChatWorkspace";
 import { DEMO_NAZ_ORG } from "@/app/lib/demoContext";
 
-export default function MemberOrgMessagesPage() {
+function MessagesPageContent() {
   return (
     <ChatWorkspace
       viewerRole="member_org"
@@ -11,5 +10,13 @@ export default function MemberOrgMessagesPage() {
       currentOrgId={DEMO_NAZ_ORG.id}
       currentOrgName={DEMO_NAZ_ORG.name}
     />
+  );
+}
+
+export default function MemberOrgMessagesPage() {
+  return (
+    <Suspense fallback={null}>
+      <MessagesPageContent />
+    </Suspense>
   );
 }
