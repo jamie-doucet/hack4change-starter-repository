@@ -208,6 +208,7 @@ export async function holdRequestInventory(
       }
 
       const remaining = listing.quantity - line.quantityRequested;
+      const lineRef = doc(db, "requests", request.id, "lines", line.id);
 
       if (remaining > 0) {
         transaction.update(listingRef, {
@@ -218,10 +219,14 @@ export async function holdRequestInventory(
         transaction.delete(listingRef);
       }
 
-      const lineRef = doc(db, "requests", request.id, "lines", line.id);
       transaction.update(lineRef, {
         status: "held",
         quantityHeld: line.quantityRequested,
+        itemKey: listing.itemKey ?? line.itemKey,
+        nameSnapshot: listing.name,
+        categorySnapshot: listing.category,
+        imageUrlSnapshot: listing.imageUrl ?? "",
+        expirationSnapshot: listing.expiration ?? null,
       });
     }
 
@@ -273,7 +278,7 @@ export async function cancelHeldRequest(
           name: line.nameSnapshot,
           category: line.categorySnapshot,
           quantity: heldQty,
-          imageUrl: line.imageUrlSnapshot ?? "",
+          imageUrl: line.imageUrlSnapshot || null,
           urgency: null,
           expiration: line.expirationSnapshot ?? null,
           status: "active",
@@ -295,6 +300,7 @@ export async function cancelHeldRequest(
   });
 }
 
+
 export async function completeHeldRequest(
   request: RequestDoc,
   lines: RequestLineDoc[]
@@ -315,11 +321,39 @@ export async function completeHeldRequest(
     for (const line of lines) {
       if (line.status !== "held") continue;
 
+      const completedQty = line.quantityHeld ?? line.quantityRequested;
+
       const lineRef = doc(db, "requests", request.id, "lines", line.id);
       transaction.update(lineRef, {
         status: "completed",
-        quantityCompleted: line.quantityHeld ?? line.quantityRequested,
+        quantityCompleted: completedQty,
       });
+
+      const askingQuery = query(
+        collection(db, "listings"),
+        where("orgId", "==", request.fromOrgId),
+        where("kind", "==", "asking"),
+        where("name", "==", line.nameSnapshot)
+      );
+
+      const askingSnap = await getDocs(askingQuery);
+
+      if (!askingSnap.empty) {
+        const askingDoc = askingSnap.docs[0];
+        const askingRef = doc(db, "listings", askingDoc.id);
+        const asking = askingDoc.data() as Omit<ListingDoc, "id">;
+
+        const nextQty = Math.max(0, asking.quantity - completedQty);
+
+        if (nextQty > 0) {
+          transaction.update(askingRef, {
+            quantity: nextQty,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          transaction.delete(askingRef);
+        }
+      }
     }
 
     transaction.update(requestRef, {

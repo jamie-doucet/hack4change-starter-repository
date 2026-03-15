@@ -15,6 +15,7 @@ import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { useRouter } from "next/navigation";
 import AggregatedResourceCard from "@/app/components/home/AggregatedResourceCard";
 import AggregatedItemOverlay from "@/app/components/home/AggregatedItemOverlay";
+import NetworkOrgCarousel from "@/app/components/home/NetworkOrgCarousel";
 import { subscribeAllOrgs } from "@/app/lib/firestore/orgs";
 import { subscribeActiveListingsByKind } from "@/app/lib/firestore/listings";
 import type { AskingItem, OrgProfile } from "@/app/components/org/types";
@@ -44,6 +45,9 @@ type AggregateItem = {
   sourceCount: number;
   sources: AggregateSource[];
 };
+
+const FALLBACK_BANNER =
+  "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=1600&q=80";
 
 const orgs: NetworkOrg[] = [
   {
@@ -381,6 +385,41 @@ export default function HomePage() {
     });
   }, [aggregates, search]);
 
+  const networkOrgCards = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        location: string;
+        bio: string;
+        bannerImage: string;
+      }
+    >();
+
+    for (const org of orgs) {
+      map.set(org.id, {
+        id: org.id,
+        name: org.name,
+        location: org.location,
+        bio: org.bio,
+        bannerImage: org.bannerImage,
+      });
+    }
+
+    for (const org of realOrgs) {
+      map.set(org.id, {
+        id: org.id,
+        name: org.name || org.id,
+        location: org.location || "",
+        bio: org.bio || "",
+        bannerImage: org.bannerImageUrl || FALLBACK_BANNER,
+      });
+    }
+
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [realOrgs]);
+
   useEffect(() => {
     if (!filteredAggregates.some((item) => item.key === selectedKey)) {
       setSelectedKey(filteredAggregates[0]?.key ?? "");
@@ -597,14 +636,33 @@ export default function HomePage() {
                 ),
               }}
             />
-
+            <Box
+            sx={{
+              maxHeight: { xs: 420, md: 560 },
+              overflowY: "auto",
+              px: 1,
+              py: 1,
+              mx: -0.5,
+              my: -0.5,
+              "&::-webkit-scrollbar": {
+                width: 10,
+              },
+              "&::-webkit-scrollbar-track": {
+                background: "transparent",
+              },
+              "&::-webkit-scrollbar-thumb": {
+                background: "rgba(40, 199, 167, 0.24)",
+                borderRadius: 999,
+              },
+            }}
+          >
             <Stack spacing={1.25}>
               {filteredAggregates.map((item) => (
                 <AggregatedResourceCard
                   key={item.key}
                   item={item}
                   active={item.key === selectedKey && overlayOpen}
-                  showImage={mode !== "asking"}
+                  showImage={mode === "asking"}
                   onClick={() => {
                     setSelectedKey(item.key);
                     setOverlayOpen(true);
@@ -618,7 +676,12 @@ export default function HomePage() {
                 </Typography>
               )}
             </Stack>
+          </Box>
           </Paper>
+
+          <Box sx={{ mt: 0.5 }}>
+            <NetworkOrgCarousel orgs={networkOrgCards} />
+          </Box>
         </Stack>
       </Container>
 
@@ -627,7 +690,7 @@ export default function HomePage() {
         mode={overlayMode}
         item={selectedItem}
         requestSelection={requestSelection}
-        showImage={mode !== "asking"}
+        showImage={mode === "asking"}
         onClose={() => setOverlayOpen(false)}
         onSourceQuantityChange={handleSourceQuantityChange}
         onRequest={handleRequest}

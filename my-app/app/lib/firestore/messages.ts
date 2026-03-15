@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -41,11 +42,10 @@ export async function openOrCreateThread(args: {
 }) {
   const participantKey = makeParticipantKey(args.currentOrgId, args.otherOrgId);
   const ref = doc(db, "threads", participantKey);
+  const existing = await getDoc(ref);
 
-  await setDoc(
-    ref,
-    {
-      participantKey,
+  if (existing.exists()) {
+    await updateDoc(ref, {
       orgIds: [args.currentOrgId, args.otherOrgId].sort(),
       orgNames: {
         [args.currentOrgId]: args.currentOrgName,
@@ -53,10 +53,22 @@ export async function openOrCreateThread(args: {
       },
       subject: args.subject ?? "Conversation",
       updatedAt: serverTimestamp(),
-      createdAt: serverTimestamp(),
+    });
+
+    return participantKey;
+  }
+
+  await setDoc(ref, {
+    participantKey,
+    orgIds: [args.currentOrgId, args.otherOrgId].sort(),
+    orgNames: {
+      [args.currentOrgId]: args.currentOrgName,
+      [args.otherOrgId]: args.otherOrgName,
     },
-    { merge: true }
-  );
+    subject: args.subject ?? "Conversation",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
 
   return participantKey;
 }
@@ -65,7 +77,10 @@ export function subscribeThreadsForOrg(
   orgId: string,
   callback: (threads: ChatThread[]) => void
 ): Unsubscribe {
-  const q = query(collection(db, "threads"), where("orgIds", "array-contains", orgId));
+  const q = query(
+    collection(db, "threads"),
+    where("orgIds", "array-contains", orgId)
+  );
 
   return onSnapshot(
     q,
@@ -137,6 +152,64 @@ export async function sendTextMessage(args: {
     lastMessageText: trimmed,
     lastMessageAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+  });
+}
+
+export async function sendMatchOfferMessage(args: {
+  threadId: string;
+  senderOrgId: string;
+  senderOrgName: string;
+  matchOffer: {
+    matchId: string;
+    offeringListingId: string;
+    offeringOrgId: string;
+    offeringOrgName: string;
+    itemKey: string;
+    itemName: string;
+    category: "food" | "clothing" | "hygiene" | "supplies";
+    imageUrl?: string | null;
+    expiration?: string | null;
+    availableQuantity: number;
+  };
+}) {
+  const text = `${args.senderOrgName} now has ${args.matchOffer.itemName} available.`;
+
+  await addDoc(collection(db, "threads", args.threadId, "messages"), {
+    senderRole: "org",
+    senderOrgId: args.senderOrgId,
+    senderOrgName: args.senderOrgName,
+    type: "match_offer",
+    text,
+    automated: true,
+    matchOffer: {
+      matchId: args.matchOffer.matchId,
+      offeringListingId: args.matchOffer.offeringListingId,
+      offeringOrgId: args.matchOffer.offeringOrgId,
+      offeringOrgName: args.matchOffer.offeringOrgName,
+      itemKey: args.matchOffer.itemKey,
+      itemName: args.matchOffer.itemName,
+      category: args.matchOffer.category,
+      imageUrl: args.matchOffer.imageUrl ?? "",
+      expiration: args.matchOffer.expiration ?? null,
+      availableQuantity: args.matchOffer.availableQuantity,
+      actionTaken: false,
+    },
+    createdAt: serverTimestamp(),
+  });
+
+  await updateDoc(doc(db, "threads", args.threadId), {
+    lastMessageText: text,
+    lastMessageAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function markMatchOfferUsed(args: {
+  threadId: string;
+  messageId: string;
+}) {
+  await updateDoc(doc(db, "threads", args.threadId, "messages", args.messageId), {
+    "matchOffer.actionTaken": true,
   });
 }
 

@@ -41,6 +41,7 @@ type Props = {
   items: InventoryItem[];
   onAddManual: () => void;
   onAddCamera: () => void;
+  onAddGroup?: () => void;
   onEdit: (item: InventoryItem) => void;
   onDeleteManual: () => void;
   onDeleteMany: (ids: string[]) => void;
@@ -85,6 +86,7 @@ export default function InventorySection({
   items,
   onAddManual,
   onAddCamera,
+  onAddGroup,
   onEdit,
   onDeleteManual,
   onDeleteMany,
@@ -100,7 +102,7 @@ export default function InventorySection({
   const [addAnchorEl, setAddAnchorEl] = useState<null | HTMLElement>(null);
   const [deleteAnchorEl, setDeleteAnchorEl] = useState<null | HTMLElement>(null);
 
-  const useAddMenu = kind === "offering";
+  const useAddMenu = kind === "offering" || (kind === "asking" && !!onAddGroup);
   const useDeleteMenu = kind === "offering";
 
   const previewItems = useMemo(() => {
@@ -246,64 +248,64 @@ export default function InventorySection({
             </Typography>
 
             <Stack direction="row" spacing={{ xs: 0.75, sm: 1 }} alignItems="center">
-            <IconButton
-              onClick={(e) => {
-                e.stopPropagation();
+              <IconButton
+                onClick={(e) => {
+                  e.stopPropagation();
 
-                if (useAddMenu) {
-                  openAddMenu(e);
-                } else {
-                  onAddManual();
-                }
-              }}
-              sx={{
-                bgcolor: "var(--accent)",
-                color: "#08352d",
-                borderRadius: 999,
-                width: { xs: 42, sm: 46 },
-                height: { xs: 42, sm: 46 },
-                "&:hover": {
-                  bgcolor: "var(--accent-strong)",
+                  if (useAddMenu) {
+                    openAddMenu(e);
+                  } else {
+                    onAddManual();
+                  }
+                }}
+                sx={{
+                  bgcolor: "var(--accent)",
                   color: "white",
-                },
-              }}
-            >
-              <AddIcon />
-            </IconButton>
+                  borderRadius: 999,
+                  width: { xs: 42, sm: 46 },
+                  height: { xs: 42, sm: 46 },
+                  "&:hover": {
+                    bgcolor: "var(--accent-strong)",
+                    color: "white",
+                  },
+                }}
+              >
+                <AddIcon />
+              </IconButton>
 
-            <IconButton
-              onClick={(e) => {
-                e.stopPropagation();
+              <IconButton
+                onClick={(e) => {
+                  e.stopPropagation();
 
-                if (!expanded) {
-                  setExpanded(true);
-                }
+                  if (!expanded) {
+                    setExpanded(true);
+                  }
 
-                if (deleteMode) {
-                  setDeleteMode(false);
-                  setSelectedIds([]);
-                  closeMenus();
-                  return;
-                }
+                  if (deleteMode) {
+                    setDeleteMode(false);
+                    setSelectedIds([]);
+                    closeMenus();
+                    return;
+                  }
 
-                if (useDeleteMenu) {
-                  openDeleteMenu(e);
-                } else {
-                  setDeleteMode(true);
-                  onDeleteManual();
-                }
-              }}
-              sx={{
-                bgcolor: deleteMode ? "#fff1f1" : "white",
-                color: deleteMode ? "#d32f2f" : "var(--foreground)",
-                borderRadius: 999,
-                width: { xs: 42, sm: 46 },
-                height: { xs: 42, sm: 46 },
-                border: "1px solid var(--border)",
-              }}
-            >
-              <DeleteOutlineIcon />
-            </IconButton>
+                  if (useDeleteMenu) {
+                    openDeleteMenu(e);
+                  } else {
+                    setDeleteMode(true);
+                    onDeleteManual();
+                  }
+                }}
+                sx={{
+                  bgcolor: deleteMode ? "#fff1f1" : "white",
+                  color: deleteMode ? "#d32f2f" : "var(--foreground)",
+                  borderRadius: 999,
+                  width: { xs: 42, sm: 46 },
+                  height: { xs: 42, sm: 46 },
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <DeleteOutlineIcon />
+              </IconButton>
 
               <IconButton
                 onClick={(e) => {
@@ -453,6 +455,17 @@ export default function InventorySection({
         >
           Add manually
         </MenuItem>
+
+        {kind === "asking" && onAddGroup && (
+          <MenuItem
+            onClick={() => {
+              closeMenus();
+              onAddGroup();
+            }}
+          >
+            Group add
+          </MenuItem>
+        )}
 
         {kind === "offering" && (
           <MenuItem

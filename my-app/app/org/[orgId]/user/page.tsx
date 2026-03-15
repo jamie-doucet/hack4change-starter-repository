@@ -118,18 +118,6 @@ export default function UserOrgPage() {
                   fontWeight: 800,
                 }}
               >
-                Organization dashboard
-              </Typography>
-
-              <Typography
-                sx={{
-                  m: 0,
-                  fontSize: "clamp(2rem, 6vw, 3.2rem)",
-                  lineHeight: 0.95,
-                  letterSpacing: "-0.04em",
-                  fontWeight: 800,
-                }}
-              >
                 Member organisation profile
               </Typography>
             </Box>

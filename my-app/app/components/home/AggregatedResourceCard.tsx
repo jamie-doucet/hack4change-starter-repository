@@ -33,7 +33,7 @@ export default function AggregatedResourceCard({
         border: "1px solid",
         borderColor: active ? "rgba(40, 199, 167, 0.34)" : "var(--border)",
         bgcolor: active ? "#f7fffc" : "white",
-        boxShadow: active ? "var(--shadow)" : "var(--shadow-soft)",
+        boxShadow: active ? "0 8px 22px rgba(0,0,0,0.07)" : "0 2px 8px rgba(0,0,0,0.04)",
         cursor: "pointer",
         transition: "0.18s ease",
       }}

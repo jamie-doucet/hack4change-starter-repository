@@ -19,8 +19,8 @@ function formatExpiry(value?: string | number | Date | null) {
     value instanceof Date
       ? value
       : typeof value === "number"
-      ? new Date(value)
-      : new Date(value);
+        ? new Date(value)
+        : new Date(value);
 
   if (Number.isNaN(date.getTime())) return "";
 
@@ -54,15 +54,10 @@ export default function RequestMessageBubble({
   onDone,
   onCancel,
 }: Props) {
-  const canHold =
-    viewerRole === "org" &&
-    message.senderRole === "member_org" &&
-    message.requestStatus === "pending";
+  const effectiveStatus = message.requestStatus ?? "pending";
 
-  const canResolve =
-    viewerRole === "org" &&
-    message.senderRole === "member_org" &&
-    message.requestStatus === "held";
+  const canHold = !mine && effectiveStatus === "pending";
+  const canResolve = !mine && effectiveStatus === "held";
 
   return (
     <Box
@@ -105,12 +100,12 @@ export default function RequestMessageBubble({
 
           <Chip
             size="small"
-            label={statusLabel(message.requestStatus)}
+            label={statusLabel(effectiveStatus)}
             sx={{
               borderRadius: 999,
               bgcolor: "white",
-              color: statusColor(message.requestStatus),
-              border: `1px solid ${statusColor(message.requestStatus)}22`,
+              color: statusColor(effectiveStatus),
+              border: `1px solid ${statusColor(effectiveStatus)}22`,
               fontWeight: 800,
             }}
           />
@@ -128,7 +123,7 @@ export default function RequestMessageBubble({
           {message.text}
         </Typography>
 
-        {message.expiresAt && message.requestStatus === "pending" && (
+        {message.expiresAt && effectiveStatus === "pending" && (
           <Typography
             sx={{
               color: "var(--muted)",

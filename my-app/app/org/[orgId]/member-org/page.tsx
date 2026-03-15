@@ -18,7 +18,7 @@ import RequestListPanel from "@/app/components/org/RequestListPanel";
 import InventoryBrowseControls from "@/app/components/org/InventoryBrowseControls";
 import WishlistPreviewCard from "@/app/components/org/WishlistPreviewCard";
 
-import { DEMO_MEMBER_ORG } from "@/app/lib/demoContext";
+import { DEMO_NAZ_ORG } from "@/app/lib/demoContext";
 import { subscribeOrg } from "@/app/lib/firestore/orgs";
 import { subscribeOrgListings } from "@/app/lib/firestore/listings";
 import { createRequest } from "@/app/lib/firestore/requests";
@@ -209,8 +209,8 @@ export default function MemberOrgOfferingsPage() {
 
   const handleOpenMessageThread = async () => {
     const threadId = await openOrCreateThread({
-      currentOrgId: DEMO_MEMBER_ORG.id,
-      currentOrgName: DEMO_MEMBER_ORG.name,
+      currentOrgId: DEMO_NAZ_ORG.id,
+      currentOrgName: DEMO_NAZ_ORG.name,
       otherOrgId: viewedOrg.id,
       otherOrgName: viewedOrg.name,
       subject: "Conversation",
@@ -230,8 +230,8 @@ export default function MemberOrgOfferingsPage() {
       ).toISOString();
 
       const requestId = await createRequest({
-        fromOrgId: DEMO_MEMBER_ORG.id,
-        fromOrgNameSnapshot: DEMO_MEMBER_ORG.name,
+        fromOrgId: DEMO_NAZ_ORG.id,
+        fromOrgNameSnapshot: DEMO_NAZ_ORG.name,
         toOrgId: viewedOrg.id,
         toOrgNameSnapshot: viewedOrg.name,
         expiresAt: expiresAtIso,
@@ -248,8 +248,8 @@ export default function MemberOrgOfferingsPage() {
       });
 
       const threadId = await openOrCreateThread({
-        currentOrgId: DEMO_MEMBER_ORG.id,
-        currentOrgName: DEMO_MEMBER_ORG.name,
+        currentOrgId: DEMO_NAZ_ORG.id,
+        currentOrgName: DEMO_NAZ_ORG.name,
         otherOrgId: viewedOrg.id,
         otherOrgName: viewedOrg.name,
         subject: "Conversation",
@@ -258,10 +258,10 @@ export default function MemberOrgOfferingsPage() {
       await appendRequestMessage({
         threadId,
         senderRole: "member_org",
-        senderOrgId: DEMO_MEMBER_ORG.id,
-        senderOrgName: DEMO_MEMBER_ORG.name,
+        senderOrgId: DEMO_NAZ_ORG.id,
+        senderOrgName: DEMO_NAZ_ORG.name,
         requestId,
-        text: `${DEMO_MEMBER_ORG.name} sent a request.`,
+        text: `${DEMO_NAZ_ORG.name} sent a request.`,
         expiresAt: expiresAtIso,
         requestLines: selectedItems.map(({ item, quantity }) => ({
           itemName: item.name,
@@ -405,22 +405,9 @@ router.push(`/messages/member-org?thread=${threadId}`);
                   fontWeight: 800,
                 }}
               >
-                Organization dashboard
-              </Typography>
-
-              <Typography
-                sx={{
-                  m: 0,
-                  fontSize: "clamp(2rem, 6vw, 3.2rem)",
-                  lineHeight: 0.95,
-                  letterSpacing: "-0.04em",
-                  fontWeight: 800,
-                }}
-              >
                 Member organisation profile
               </Typography>
             </Box>
-
             <Button
               startIcon={<ChatBubbleOutlineRoundedIcon />}
               onClick={handleOpenMessageThread}

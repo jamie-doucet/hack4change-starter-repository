@@ -11,6 +11,20 @@ export type ChatRequestLine = {
   quantity: number;
 };
 
+export type ChatMatchOffer = {
+  matchId: string;
+  offeringListingId: string;
+  offeringOrgId: string;
+  offeringOrgName: string;
+  itemKey: string;
+  itemName: string;
+  category: "food" | "clothing" | "hygiene" | "supplies";
+  imageUrl?: string | null;
+  expiration?: string | null;
+  availableQuantity: number;
+  actionTaken?: boolean;
+};
+
 export type ChatThread = {
   id: string;
   participantKey: string;
@@ -29,7 +43,7 @@ export type ChatMessage = {
   senderRole: ChatRole;
   senderOrgId: string;
   senderOrgName: string;
-  type: "text" | "request" | "system";
+  type: "text" | "request" | "system" | "match_offer";
   text: string;
   createdAt?: unknown;
   automated?: boolean;
@@ -37,4 +51,5 @@ export type ChatMessage = {
   requestLines?: ChatRequestLine[];
   requestStatus?: ChatRequestStatus;
   expiresAt?: string;
+  matchOffer?: ChatMatchOffer;
 };

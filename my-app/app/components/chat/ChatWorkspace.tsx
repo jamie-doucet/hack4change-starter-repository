@@ -19,6 +19,7 @@ import {
   subscribeMessages,
   subscribeThreadsForOrg,
   updateRequestMessageStatus,
+  appendRequestMessage, markMatchOfferUsed
 } from "@/app/lib/firestore/messages";
 import {
   cancelHeldRequest,
@@ -26,12 +27,14 @@ import {
   getRequestById,
   getRequestLinesOnce,
   holdRequestInventory,
+  createRequest,
 } from "@/app/lib/firestore/requests";
 import type {
   ChatMessage,
   ChatRole,
   ChatThread,
 } from "@/app/lib/chat/chatTypes";
+import MatchOfferMessageBubble from "@/app/components/chat/MatchOfferMessageBubble";
 
 type Props = {
   viewerRole: ChatRole;
@@ -82,7 +85,8 @@ export default function ChatWorkspace({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState("");
   const [draft, setDraft] = useState("");
-
+  const [requestingMatchMessageId, setRequestingMatchMessageId] = useState("");
+  
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -93,14 +97,20 @@ export default function ChatWorkspace({
     const requestedThread = searchParams.get("thread");
 
     if (requestedThread && threads.some((thread) => thread.id === requestedThread)) {
-      setSelectedThreadId(requestedThread);
+      setSelectedThreadId((prev) =>
+        prev === requestedThread ? prev : requestedThread
+      );
       return;
     }
 
-    if (!requestedThread && !selectedThreadId && threads.length > 0) {
-      setSelectedThreadId(threads[0].id);
-    }
-  }, [threads, searchParams, selectedThreadId]);
+    setSelectedThreadId((prev) => {
+      if (prev && threads.some((thread) => thread.id === prev)) {
+        return prev;
+      }
+
+      return threads[0]?.id ?? "";
+    });
+  }, [threads, searchParams]);
 
   useEffect(() => {
     if (!selectedThreadId) {
@@ -108,9 +118,20 @@ export default function ChatWorkspace({
       return;
     }
 
-    router.replace(`${pathname}?thread=${selectedThreadId}`);
     return subscribeMessages(selectedThreadId, setMessages);
-  }, [selectedThreadId, pathname, router]);
+  }, [selectedThreadId]);
+
+  useEffect(() => {
+    if (!selectedThreadId) return;
+
+    const currentThreadParam = searchParams.get("thread");
+    if (currentThreadParam === selectedThreadId) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("thread", selectedThreadId);
+
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [selectedThreadId, pathname, router, searchParams]);
 
   const selectedThread = useMemo(
     () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
@@ -145,6 +166,71 @@ export default function ChatWorkspace({
     } catch (error) {
       console.error(error);
       window.alert("Could not send message.");
+    }
+  };
+
+  const handleRequestFromMatch = async (message: ChatMessage) => {
+    const offer = message.matchOffer;
+    if (!selectedThread || !offer || requestingMatchMessageId) return;
+
+    setRequestingMatchMessageId(message.id);
+
+    try {
+      const expiresAtIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+      const requestId = await createRequest({
+        fromOrgId: currentOrgId,
+        fromOrgNameSnapshot: currentOrgName,
+        toOrgId: offer.offeringOrgId,
+        toOrgNameSnapshot: offer.offeringOrgName,
+        expiresAt: expiresAtIso,
+        lines: [
+          {
+            listingId: offer.offeringListingId,
+            itemKey: offer.itemKey,
+            nameSnapshot: offer.itemName,
+            categorySnapshot: offer.category,
+            imageUrlSnapshot: offer.imageUrl || "",
+            expirationSnapshot: offer.expiration ?? undefined,
+            urgencySnapshot: undefined,
+            quantityRequested: offer.availableQuantity,
+          },
+        ],
+      });
+
+      await appendRequestMessage({
+        threadId: selectedThread.id,
+        senderRole: viewerRole,
+        senderOrgId: currentOrgId,
+        senderOrgName: currentOrgName,
+        requestId,
+        text: `${currentOrgName} sent a request.`,
+        expiresAt: expiresAtIso,
+        requestLines: [
+          {
+            itemName: offer.itemName,
+            quantity: offer.availableQuantity,
+          },
+        ],
+      });
+
+      await markMatchOfferUsed({
+        threadId: selectedThread.id,
+        messageId: message.id,
+      });
+
+      await sendSystemMessage({
+        threadId: selectedThread.id,
+        senderOrgId: offer.offeringOrgId,
+        senderOrgName: offer.offeringOrgName,
+        requestId,
+        text: "Automatic reply: This is only a request and nothing has been confirmed yet. You will receive another message if it is accepted or cancelled.",
+      });
+    } catch (error) {
+      console.error(error);
+      window.alert("Could not send request from this match.");
+    } finally {
+      setRequestingMatchMessageId("");
     }
   };
 
@@ -458,64 +544,63 @@ export default function ChatWorkspace({
                   No messages yet. Send the first one below.
                 </Typography>
               ) : (
-                messages.map((message) =>
-                  message.type === "request" ? (
-                    <RequestMessageBubble
-                      key={message.id}
-                      message={message}
-                      mine={message.senderOrgId === currentOrgId}
-                      viewerRole={viewerRole}
-                      onHold={() => handleHoldRequest(message.id, message.requestId)}
-                      onDone={() => handleDoneRequest(message.id, message.requestId)}
-                      onCancel={() => handleCancelRequest(message.id, message.requestId)}
-                    />
-                  ) : (
-                    <Box
-                      key={message.id}
+              messages.map((message) =>
+                message.type === "request" ? (
+                  <RequestMessageBubble
+                    key={message.id}
+                    message={message}
+                    mine={message.senderOrgId === currentOrgId}
+                    viewerRole={viewerRole}
+                    onHold={() => handleHoldRequest(message.id, message.requestId)}
+                    onDone={() => handleDoneRequest(message.id, message.requestId)}
+                    onCancel={() => handleCancelRequest(message.id, message.requestId)}
+                  />
+                ) : message.type === "match_offer" ? (
+                  <MatchOfferMessageBubble
+                    key={message.id}
+                    message={message}
+                    mine={message.senderOrgId === currentOrgId}
+                    canRequest={message.senderOrgId !== currentOrgId}
+                    submitting={requestingMatchMessageId === message.id}
+                    onRequestNow={() => handleRequestFromMatch(message)}
+                  />
+                ) : (
+                  <Box
+                    key={message.id}
+                    sx={{
+                      maxWidth: "min(520px, 100%)",
+                      width: "fit-content",
+                      minWidth: 0,
+                      flexShrink: 0,
+                      alignSelf:
+                        message.senderOrgId === currentOrgId ? "flex-end" : "flex-start",
+                      bgcolor:
+                        message.senderOrgId === currentOrgId ? "var(--accent)" : "white",
+                      color:
+                        message.senderOrgId === currentOrgId ? "white" : "var(--foreground)",
+                      border:
+                        message.senderOrgId === currentOrgId ? "none" : "1px solid var(--border)",
+                      borderRadius: "22px",
+                      px: 1.5,
+                      py: 1.2,
+                      boxShadow: "var(--shadow-soft)",
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    <Typography sx={{ whiteSpace: "pre-wrap" }}>{message.text}</Typography>
+                    <Typography
                       sx={{
-                        maxWidth: "min(520px, 100%)",
-                        width: "fit-content",
-                        minWidth: 0,
-                        flexShrink: 0,
-                        alignSelf:
-                          message.senderOrgId === currentOrgId
-                            ? "flex-end"
-                            : "flex-start",
-                        bgcolor:
-                          message.senderOrgId === currentOrgId
-                            ? "var(--accent)"
-                            : "white",
-                        color:
-                          message.senderOrgId === currentOrgId
-                            ? "white"
-                            : "var(--foreground)",
-                        border:
-                          message.senderOrgId === currentOrgId
-                            ? "none"
-                            : "1px solid var(--border)",
-                        borderRadius: "22px",
-                        px: 1.5,
-                        py: 1.2,
-                        boxShadow: "var(--shadow-soft)",
-                        overflowWrap: "anywhere",
-                        wordBreak: "break-word",
+                        mt: 0.5,
+                        fontSize: "0.78rem",
+                        opacity: 0.7,
                       }}
                     >
-                      <Typography sx={{ whiteSpace: "pre-wrap" }}>
-                        {message.text}
-                      </Typography>
-                      <Typography
-                        sx={{
-                          mt: 0.5,
-                          fontSize: "0.78rem",
-                          opacity: 0.7,
-                        }}
-                      >
-                        {formatTime(message.createdAt)}
-                      </Typography>
-                    </Box>
-                  )
+                      {formatTime(message.createdAt)}
+                    </Typography>
+                  </Box>
                 )
+              )
               )}
             </Stack>
 
